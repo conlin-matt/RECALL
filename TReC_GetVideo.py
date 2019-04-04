@@ -77,7 +77,7 @@ def TReC_GetVideo(cam,year=2018,month=6,day=3,hour=1000):
 
 
 
-test = TReC_GetVideo('St Augustine',2018,9,5,1000)       
+vidPth = TReC_GetVideo('Buxton North')       
         
         
         
