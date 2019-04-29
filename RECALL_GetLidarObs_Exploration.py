@@ -12,6 +12,10 @@ import sys
 import requests
 import pandas as pd
 import re
+import pdal
+import os
+import json
+import shapefile
 
 
 # Function to draw progress bar while code is working #
@@ -105,36 +109,62 @@ matchingTable.loc[:,'Name'] = nameList[matchingTableRows]
 print(matchingTable)
 matchingTable_IDUse = input('Select the dataset which you would like to use. Specify as the ID in the left-most column above: ')
 
-
-########### Download the desired dataset #####################
-
-import pdal
-import os
-import json
-
 curDir = os.getcwd()
 curDir = curDir+'/'
 
 # Get the chosen ID #
 IDToDownload = matchingTable.loc[int(matchingTable_IDUse),'ID']
-# Go back to the FTP and download the chosen ID #
+# Go back to the FTP #
 ftp = ftplib.FTP('ftp.coast.noaa.gov','anonymous','conlinm@ufl.edu')
 ftp.cwd('/pub/DigitalCoast/lidar2_z/geoid12b/data/'+str(IDToDownload))
-files = ftp.nlst()
 
-# Extract data from each laz file and append it all together #
+
+
+################ Get the shapefile of all the tiles so we can get rid of any tiles not near the camera #########################
+# Load the tile shapefile and dbf file from the ftp #
+shpFile = str([s for s in files if "shp" in s])
+shpFile = shpFile[2:len(shpFile)-2]
+dbfFile = str([s for s in files if "dbf" in s])
+dbfFile = dbfFile[2:len(dbfFile)-2]
+
+# Write them locally so we can work with them #
+gfile = open('shapefileCreate.shp','wb') # Create the local file #
+ftp.retrbinary('RETR '+shpFile,gfile.write)
+
+gfile = open('shapefileCreate.dbf','wb') # Create the local file #
+ftp.retrbinary('RETR '+dbfFile,gfile.write)
+
+# Load them into an object using the PyShp library #
+sf = shapefile.Reader(curDir+"shapefileCreate.shp")
+
+# Loop through all of the tiles to find the one containing the camera #
+tilesKeep = []
+for shapeNum in range(0,len(sf)):
+    bx = sf.shape(shapeNum).bbox
+    bx_x = [bx[0],bx[2]]
+    bx_y = [bx[1],bx[3]]   
+    rec = sf.record(shapeNum)
+    if cameraLoc_lon>=min(bx_x) and cameraLoc_lon<=max(bx_x) and cameraLoc_lat>=min(bx_y) and cameraLoc_lat<=max(bx_y):
+        tilesKeep.append(rec['Name'])
+    
+
+
+
+########### Extract data from the appropriate laz file(s)  #####################
 allDatArrays = list()
-for thisFile in files:
+for thisFile in tilesKeep:
+    
     fileExt = thisFile.split('.')[1] # Get the file extension so that we can skip over any files that aren't .laz files #
+
     if fileExt == 'laz':
         # Save the laz file locally - would prefer not to do this, but can't seem to get the pipeline to download directly from the ftp??? #
         gfile = open('lazfile.laz','wb') # Create the local file #
         ftp.retrbinary('RETR '+thisFile,gfile.write) # Copy the contents of the file on FTP into the local file #
         gfile.close() # Close the remote file #
         
-        # Construct the json PDAL pipeline to read the file and read it in as an array #
+        # Construct the json PDAL pipeline to read the file and take only points within +-.5 degree x and y of the camera. Read the data in as an array #
         fullFileName = curDir+'lazfile.laz'
-        pipeline=(json.dumps([{'type':'readers.las','filename':fullFileName}],sort_keys=False,indent=4))
+        pipeline=(json.dumps([{'type':'readers.las','filename':fullFileName},{'type':'filters.range','limits':'X['+str(cameraLoc_lon-.5)+':'+str(cameraLoc_lon+.5)+'],Y['+str(cameraLoc_lat-.5)+':'+str(cameraLoc_lat+.5)+']'}],sort_keys=False,indent=4))
         
         # Go through the pdal steps to use the pipeline
         r = pdal.Pipeline(pipeline)  
@@ -150,26 +180,25 @@ for thisFile in files:
     
 # Extract x,y,z values #
 allDatArrays = allDatArrays[int(0)]
-lidarX = datArrays['X']
-lidarY = datArrays['Y']
-lidarZ = datArrays['Z']
+lidarX = allDatArrays['X']
+lidarY = allDatArrays['Y']
+lidarZ = allDatArrays['Z']
 
-import matplotlib as plt
-import matplotlib.cm as cmx
-from mpl_toolkits.mplot3d import Axes3D
 
-def scatter3d(x,y,z, cs, colorsMap='jet'):
-    cm = plt.get_cmap(colorsMap)
-    cNorm = plt.colors.Normalize(vmin=min(cs), vmax=max(cs))
-    scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cm)
-    fig = plt.figure()
-    ax = Axes3D(fig)
-    ax.scatter(x, y, z, c=scalarMap.to_rgba(cs))
-    scalarMap.set_array(cs)
-    fig.colorbar(scalarMap)
-    plt.show()
+# Downsample for now so we don't crash computer #
+ds = 500
+lidarX = lidarX[0:len(lidarX):ds]
+lidarY = lidarY[0:len(lidarY):ds]
+lidarZ = lidarZ[0:len(lidarZ):ds]
 
-scatter3d(lidarX,lidarY,lidarZ,lidarZ)
+
+import matplotlib.pyplot as plt
+plt.figure()
+plt.scatter(lidarX,lidarY,c=lidarZ,cmap='terrain')
+plt.plot(cameraLoc_lon,cameraLoc_lat,'.',c='k')
+plt.colorbar()
+
+
 
 
 
