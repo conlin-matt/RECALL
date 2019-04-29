@@ -110,6 +110,7 @@ matchingTable_IDUse = input('Select the dataset which you would like to use. Spe
 
 import pdal
 import os
+import json
 
 curDir = os.getcwd()
 curDir = curDir+'/'
@@ -126,29 +127,26 @@ allDatArrays = list()
 for thisFile in files:
     fileExt = thisFile.split('.')[1] # Get the file extension so that we can skip over any files that aren't .laz files #
     if fileExt == 'laz':
-        fullFileName = 'ftp.coast.noaa.gov/pub/DigitalCoast/lidar2_z/geoid12b/data/'+str(IDToDownload)+ '/'+ files[thisFile]
         # Save the laz file locally - would prefer not to do this, but can't seem to get the pipeline to download directly from the ftp??? #
         gfile = open('lazfile.laz','wb') # Create the local file #
-        ftp.retrbinary('RETR '+files[thisFile],gfile.write) # Copy the contents of the file on FTP into the local file #
+        ftp.retrbinary('RETR '+thisFile,gfile.write) # Copy the contents of the file on FTP into the local file #
         gfile.close() # Close the remote file #
         
         # Construct the json PDAL pipeline to read the file and read it in as an array #
-        pipeline="""{
-        "pipeline": [
-                {
-                        "type": "readers.las",
-                        "filename": "/Users/matthewconlin/Documents/Research/WebCAT/lazfile.laz"
-                        }
-                ]
-        }"""
-
-    r = pdal.Pipeline(pipeline)  
-    r.validate()  
-    r.execute()
-    datArrays = r.arrays
-    datArrays = datArrays[int(0)] # All of the fields are now accessable with the appropriate index #
-    allDatArrays.append(datArrays)
+        fullFileName = curDir+'lazfile.laz'
+        pipeline=(json.dumps([{'type':'readers.las','filename':fullFileName}],sort_keys=False,indent=4))
+        
+        # Go through the pdal steps to use the pipeline
+        r = pdal.Pipeline(pipeline)  
+        r.validate()  
+        r.execute()
+        
+        # Get the arrays of data and format them so we can use them #
+        datArrays = r.arrays
+        datArrays = datArrays[int(0)] # All of the fields are now accessable with the appropriate index #
+        allDatArrays.append(datArrays)
  
+  
     
 # Extract x,y,z values #
 allDatArrays = allDatArrays[int(0)]
@@ -156,13 +154,13 @@ lidarX = datArrays['X']
 lidarY = datArrays['Y']
 lidarZ = datArrays['Z']
 
-import matplotlib
+import matplotlib as plt
 import matplotlib.cm as cmx
 from mpl_toolkits.mplot3d import Axes3D
 
 def scatter3d(x,y,z, cs, colorsMap='jet'):
     cm = plt.get_cmap(colorsMap)
-    cNorm = matplotlib.colors.Normalize(vmin=min(cs), vmax=max(cs))
+    cNorm = plt.colors.Normalize(vmin=min(cs), vmax=max(cs))
     scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cm)
     fig = plt.figure()
     ax = Axes3D(fig)
