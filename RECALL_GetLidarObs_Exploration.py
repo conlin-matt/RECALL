@@ -6,16 +6,37 @@ Created on Mon Apr  8 11:22:40 2019
 @author: matthewconlin
 """
 
+
+# Need to figure out a way to install pdal from within this script. Need a conda equivalent of the pipInstall function below,
+# and need to be able to specify the channel. Also need to download gdal seperately (I think). 
+
+
+# Create function to install package using pip #
+import subprocess
+import sys
+
+def pipInstall(package):
+    subprocess.call([sys.executable, "-m", "pip", "install", package])
+    
+def pip3Install(package):
+    subprocess.call([sys.executable, "-m", "pip3", "install", package])
+
+
 # Download specified file from FTP to local file #
 import ftplib
-import sys
 import requests
-import pandas as pd
 import re
 import pdal
 import os
 import json
+import numpy
+import math
+
+pipInstall('pyshp')
 import shapefile
+
+#pipInstall('pandas')
+import pandas as pd
 
 
 # Function to draw progress bar while code is working #
@@ -117,6 +138,7 @@ IDToDownload = matchingTable.loc[int(matchingTable_IDUse),'ID']
 # Go back to the FTP #
 ftp = ftplib.FTP('ftp.coast.noaa.gov','anonymous','conlinm@ufl.edu')
 ftp.cwd('/pub/DigitalCoast/lidar2_z/geoid12b/data/'+str(IDToDownload))
+files = ftp.nlst()
 
 
 
@@ -183,6 +205,31 @@ allDatArrays = allDatArrays[int(0)]
 lidarX = allDatArrays['X']
 lidarY = allDatArrays['Y']
 lidarZ = allDatArrays['Z']
+lidarXYZ = numpy.vstack((lidarX,lidarY,lidarZ))
+lidarXYZ = numpy.transpose(lidarXYZ)
+numpy.savetxt(curDir+'lidarXYZfile.txt',lidarXYZ)
+
+# Only take points within 500 m of the camera #
+R = 6373000 # ~radius of Earth in m #
+dist = list()
+for px,py in zip(lidarX,lidarY):
+    dlon = math.radians(abs(px)) - math.radians(abs(cameraLoc_lon))
+    dlat = math.radians(abs(py)) - math.radians(abs(cameraLoc_lat))
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(abs(py))) * math.cos(math.radians(abs(cameraLoc_lat))) * math.sin(dlon/2)**2
+    c = 2*math.atan2(math.sqrt(a),math.sqrt(1-a))
+    dist.append(R*c)
+   
+lidarXsmall = list()
+lidarYsmall = list()
+lidarZsmall = list()    
+for xi,yi,zi,di in zip(lidarX,lidarY,lidarZ,dist):
+    if di<500:
+        lidarXsmall.append(xi)
+        lidarYsmall.append(yi)
+        lidarZsmall.append(zi)
+lidarXYZsmall = numpy.vstack((lidarXsmall,lidarYsmall,lidarZsmall))
+lidarXYZsmall = numpy.transpose(lidarXYZsmall)
+numpy.savetxt(curDir+'lidarXYZsmallfile.txt',lidarXYZsmall)
 
 
 # Downsample for now so we don't crash computer #
@@ -194,11 +241,14 @@ lidarZ = lidarZ[0:len(lidarZ):ds]
 
 import matplotlib.pyplot as plt
 plt.figure()
-plt.scatter(lidarX,lidarY,c=lidarZ,cmap='terrain')
+plt.scatter(lidarX,lidarY,s=1,c=lidarZ,cmap='terrain')
 plt.plot(cameraLoc_lon,cameraLoc_lat,'.',c='k')
 plt.colorbar()
+plt.axis('equal')
 
-
-
+from mpl_toolkits.mplot3d import Axes3D
+fig = plt.figure()
+ax = fig.add_subplot(111,projection='3d')
+ax.scatter(lidarX,lidarY,lidarZ,c=lidarZ)
 
 

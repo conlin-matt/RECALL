@@ -6,17 +6,29 @@ Created on Thu Apr  4 17:08:03 2019
 @author: Matthew P. Conlin
 
 
-Function to decimate WebCAT video clip downloaded with TReC_GetVideo into still images so that a still image may be pulled
+Function to decimate WebCAT video clip downloaded with RECALL_GetVideo into still images so that a still image may be pulled
 for remote-GCP extraction. Function pulls 20 equally-spaced frames from the 10 minute video.
     Inputs:
         vidFile: The path to the saved video. This is the output of TReC_GetVideo 
 
 """
+# Create function to install package using pip #
+import subprocess
+import sys
 
-def TreC_DecimateVideo(vidPth):
+def install(package):
+    subprocess.call([sys.executable, "-m", "pip", "install", package])
+
+
+
+
+
+def RECALL_DecimateVideo(vidPth):
     
     # Import packages #
-    import cv2
+    install('opencv-python')
+    import cv2 
+    
     import os
     
     # Make sure we are still in the same directory as the video # 
@@ -34,5 +46,5 @@ def TreC_DecimateVideo(vidPth):
         test,image = vid.read()
         cv2.imwrite('frame'+str(count)+'.png', image)
 
-
+RECALL_DecimateVideo(vidPth)
 
