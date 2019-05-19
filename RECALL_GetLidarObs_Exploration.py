@@ -12,15 +12,11 @@ Created on Mon Apr  8 11:22:40 2019
 
 
 # Create function to install package using pip #
-import subprocess
-import sys
-
 def pipInstall(package):
+    import subprocess
+    import sys
     subprocess.call([sys.executable, "-m", "pip", "install", package])
     
-def pip3Install(package):
-    subprocess.call([sys.executable, "-m", "pip3", "install", package])
-
 
 # Download specified file from FTP to local file #
 import ftplib
@@ -32,15 +28,19 @@ import json
 import numpy
 import math
 
-pipInstall('pyshp')
+#pipInstall('pyshp')
 import shapefile
 
 #pipInstall('pandas')
 import pandas as pd
 
+pipInstall('utm')
+import utm
+
 
 # Function to draw progress bar while code is working #
 def drawProgressBar(percent, barLen = 20):
+    import sys
     sys.stdout.write("\r")
     progress = ""
     for i in range(barLen):
@@ -55,10 +55,12 @@ def drawProgressBar(percent, barLen = 20):
 # Inputs #
 cameraLoc_lat = 25.810
 cameraLoc_lon = -80.122
-ftp = ftplib.FTP('ftp.coast.noaa.gov','anonymous','conlinm@ufl.edu')
+cameraLoc_UTMx = utm.from_latlon(cameraLoc_lat,cameraLoc_lon)[0]
+cameraLoc_UTMy = utm.from_latlon(cameraLoc_lat,cameraLoc_lon)[1]
 
 
 # First, get all of the IDs which exist #
+ftp = ftplib.FTP('ftp.coast.noaa.gov','anonymous','conlinm@ufl.edu')
 ftp.cwd('/pub/DigitalCoast/lidar2_z/geoid12b/data/')
 IDs = ftp.nlst()
 # Get rid of spurious IDs which have letters
@@ -160,85 +162,104 @@ ftp.retrbinary('RETR '+dbfFile,gfile.write)
 sf = shapefile.Reader(curDir+"shapefileCreate.shp")
 
 # Loop through all of the tiles to find the one containing the camera #
-tilesKeep = []
+tilesKeep = list()
 for shapeNum in range(0,len(sf)):
-    bx = sf.shape(shapeNum).bbox
-    bx_x = [bx[0],bx[2]]
-    bx_y = [bx[1],bx[3]]   
-    rec = sf.record(shapeNum)
-    if cameraLoc_lon>=min(bx_x) and cameraLoc_lon<=max(bx_x) and cameraLoc_lat>=min(bx_y) and cameraLoc_lat<=max(bx_y):
-        tilesKeep.append(rec['Name'])
+    bx = sf.shape(shapeNum).bbox # Get the bounding box #
+    # Get the bounding box verticies in utm. bl = bottom-left, etc. #
+    bx_bl = utm.from_latlon(bx[1],bx[0]) 
+    bx_br = utm.from_latlon(bx[1],bx[2]) 
+    bx_tr = utm.from_latlon(bx[3],bx[2]) 
+    bx_tl = utm.from_latlon(bx[3],bx[0]) 
+    # Min distance between camera loc and horizontal lines connecting tile verticies #
+    line_minXbb = numpy.array([numpy.linspace(bx_bl[0],bx_br[0],num=1000),numpy.linspace(bx_bl[1],bx_br[1],num=1000)])
+    line_maxXbb = numpy.array([numpy.linspace(bx_tl[0],bx_tr[0],num=1000),numpy.linspace(bx_tl[1],bx_tr[1],num=1000)])
+    dist1 = list()
+    dist2 = list()
+    for ixMin,iyMin,ixMax,iyMax in zip(line_minXbb[0,:],line_minXbb[1,:],line_maxXbb[0,:],line_maxXbb[1,:]):
+        dist1.append(math.sqrt((ixMin-cameraLoc_UTMx)**2 + (iyMin-cameraLoc_UTMy)**2))
+        dist2.append(math.sqrt((ixMax-cameraLoc_UTMx)**2 + (iyMax-cameraLoc_UTMy)**2))
+    # Keep the tile if min distance to either of lines meets criterion #
+    try:
+        rec = sf.record(shapeNum)
+        if min(dist1)<500 or min(dist2)<500:
+            tilesKeep.append(rec['Name'])
+    except:
+        pass
+
     
 
 
 
 ########### Extract data from the appropriate laz file(s)  #####################
 allDatArrays = list()
+lidarDat = numpy.empty([0,3])
+i = 0
 for thisFile in tilesKeep:
     
-    fileExt = thisFile.split('.')[1] # Get the file extension so that we can skip over any files that aren't .laz files #
-
-    if fileExt == 'laz':
-        # Save the laz file locally - would prefer not to do this, but can't seem to get the pipeline to download directly from the ftp??? #
-        gfile = open('lazfile.laz','wb') # Create the local file #
-        ftp.retrbinary('RETR '+thisFile,gfile.write) # Copy the contents of the file on FTP into the local file #
-        gfile.close() # Close the remote file #
+    i = i+1
+    print('Working on tile ' + str(i)+' of '+str(len(tilesKeep))+'. Data variable up to '+str(len(lidarDat))+ ' points.')
+    # Save the laz file locally - would prefer not to do this, but can't seem to get the pipeline to download directly from the ftp??? #
+    gfile = open('lazfile.laz','wb') # Create the local file #
+    ftp.retrbinary('RETR '+thisFile,gfile.write) # Copy the contents of the file on FTP into the local file #
+    gfile.close() # Close the remote file #
         
-        # Construct the json PDAL pipeline to read the file and take only points within +-.5 degree x and y of the camera. Read the data in as an array #
-        fullFileName = curDir+'lazfile.laz'
-        pipeline=(json.dumps([{'type':'readers.las','filename':fullFileName},{'type':'filters.range','limits':'X['+str(cameraLoc_lon-.5)+':'+str(cameraLoc_lon+.5)+'],Y['+str(cameraLoc_lat-.5)+':'+str(cameraLoc_lat+.5)+']'}],sort_keys=False,indent=4))
+    # Construct the json PDAL pipeline to read the file and take only points within +-.5 degree x and y of the camera. Read the data in as an array #
+    fullFileName = curDir+'lazfile.laz'
+    pipeline=(json.dumps([{'type':'readers.las','filename':fullFileName},{'type':'filters.range','limits':'X['+str(cameraLoc_lon-.5)+':'+str(cameraLoc_lon+.5)+'],Y['+str(cameraLoc_lat-.5)+':'+str(cameraLoc_lat+.5)+']'}],sort_keys=False,indent=4))
         
-        # Go through the pdal steps to use the pipeline
-        r = pdal.Pipeline(pipeline)  
-        r.validate()  
-        r.execute()
+    # Go through the pdal steps to use the pipeline
+    r = pdal.Pipeline(pipeline)  
+    r.validate()  
+    r.execute()
         
-        # Get the arrays of data and format them so we can use them #
-        datArrays = r.arrays
-        datArrays = datArrays[int(0)] # All of the fields are now accessable with the appropriate index #
-        allDatArrays.append(datArrays)
- 
-  
+    # Get the arrays of data and format them so we can use them #
+    datArrays = r.arrays
+    datArrays = datArrays[int(0)] # All of the fields are now accessable with the appropriate index #
+      # allDatArrays.append(datArrays) 
     
-# Extract x,y,z values #
-allDatArrays = allDatArrays[int(0)]
-lidarX = allDatArrays['X']
-lidarY = allDatArrays['Y']
-lidarZ = allDatArrays['Z']
-lidarXYZ = numpy.vstack((lidarX,lidarY,lidarZ))
-lidarXYZ = numpy.transpose(lidarXYZ)
-numpy.savetxt(curDir+'lidarXYZfile.txt',lidarXYZ)
+    # Extract x,y,z values #
+#allDatArrays = allDatArrays[int(0)]
+    lidarX = datArrays['X']
+    lidarY = datArrays['Y']
+    lidarZ = datArrays['Z']
 
-# Only take points within 500 m of the camera #
-R = 6373000 # ~radius of Earth in m #
-dist = list()
-for px,py in zip(lidarX,lidarY):
-    dlon = math.radians(abs(px)) - math.radians(abs(cameraLoc_lon))
-    dlat = math.radians(abs(py)) - math.radians(abs(cameraLoc_lat))
-    a = math.sin(dlat/2)**2 + math.cos(math.radians(abs(py))) * math.cos(math.radians(abs(cameraLoc_lat))) * math.sin(dlon/2)**2
-    c = 2*math.atan2(math.sqrt(a),math.sqrt(1-a))
-    dist.append(R*c)
+#numpy.savetxt(curDir+'lidarXYZfile.txt',lidarXYZ)
+
+    # Only take points within 500 m of the camera #
+    R = 6373000 # ~radius of Earth in m #
+    dist = list()
+    for px,py in zip(lidarX,lidarY):
+        dlon = math.radians(abs(px)) - math.radians(abs(cameraLoc_lon))
+        dlat = math.radians(abs(py)) - math.radians(abs(cameraLoc_lat))
+        a = math.sin(dlat/2)**2 + math.cos(math.radians(abs(py))) * math.cos(math.radians(abs(cameraLoc_lat))) * math.sin(dlon/2)**2
+        c = 2*math.atan2(math.sqrt(a),math.sqrt(1-a))
+        dist.append(R*c)
    
-lidarXsmall = list()
-lidarYsmall = list()
-lidarZsmall = list()    
-for xi,yi,zi,di in zip(lidarX,lidarY,lidarZ,dist):
-    if di<500:
-        lidarXsmall.append(xi)
-        lidarYsmall.append(yi)
-        lidarZsmall.append(zi)
-lidarXYZsmall = numpy.vstack((lidarXsmall,lidarYsmall,lidarZsmall))
-lidarXYZsmall = numpy.transpose(lidarXYZsmall)
-numpy.savetxt(curDir+'lidarXYZsmallfile.txt',lidarXYZsmall)
+    lidarXsmall = list()
+    lidarYsmall = list()
+    lidarZsmall = list()    
+    for xi,yi,zi,di in zip(lidarX,lidarY,lidarZ,dist):
+        if di<500:
+            lidarXsmall.append(xi)
+            lidarYsmall.append(yi)
+            lidarZsmall.append(zi)
+    lidarXYZsmall = numpy.vstack((lidarXsmall,lidarYsmall,lidarZsmall))
+    lidarXYZsmall = numpy.transpose(lidarXYZsmall)
+    
+    lidarDat = numpy.append(lidarDat,lidarXYZsmall,axis=0)
 
-
-# Downsample for now so we don't crash computer #
-ds = 500
-lidarX = lidarX[0:len(lidarX):ds]
-lidarY = lidarY[0:len(lidarY):ds]
-lidarZ = lidarZ[0:len(lidarZ):ds]
-
-
+    del lidarX
+    del lidarY
+    del lidarZ
+    del lidarXsmall
+    del lidarYsmall
+    del lidarZsmall
+    del lidarXYZsmall
+    del datArrays
+    del dist
+        
+        
+        
 import matplotlib.pyplot as plt
 plt.figure()
 plt.scatter(lidarX,lidarY,s=1,c=lidarZ,cmap='terrain')
