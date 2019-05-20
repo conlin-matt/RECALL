@@ -53,8 +53,8 @@ def drawProgressBar(percent, barLen = 20):
 
 
 # Inputs #
-cameraLoc_lat = 25.810
-cameraLoc_lon = -80.122
+cameraLoc_lat = 32.654731
+cameraLoc_lon = -79.939322
 cameraLoc_UTMx = utm.from_latlon(cameraLoc_lat,cameraLoc_lon)[0]
 cameraLoc_UTMy = utm.from_latlon(cameraLoc_lat,cameraLoc_lon)[1]
 
@@ -181,7 +181,7 @@ for shapeNum in range(0,len(sf)):
     # Keep the tile if min distance to either of lines meets criterion #
     try:
         rec = sf.record(shapeNum)
-        if min(dist1)<500 or min(dist2)<500:
+        if min(dist1)<300 or min(dist2)<300:
             tilesKeep.append(rec['Name'])
     except:
         pass
@@ -191,7 +191,6 @@ for shapeNum in range(0,len(sf)):
 
 
 ########### Extract data from the appropriate laz file(s)  #####################
-allDatArrays = list()
 lidarDat = numpy.empty([0,3])
 i = 0
 for thisFile in tilesKeep:
@@ -239,7 +238,7 @@ for thisFile in tilesKeep:
     lidarYsmall = list()
     lidarZsmall = list()    
     for xi,yi,zi,di in zip(lidarX,lidarY,lidarZ,dist):
-        if di<500:
+        if di<300:
             lidarXsmall.append(xi)
             lidarYsmall.append(yi)
             lidarZsmall.append(zi)
@@ -257,19 +256,4 @@ for thisFile in tilesKeep:
     del lidarXYZsmall
     del datArrays
     del dist
-        
-        
-        
-import matplotlib.pyplot as plt
-plt.figure()
-plt.scatter(lidarX,lidarY,s=1,c=lidarZ,cmap='terrain')
-plt.plot(cameraLoc_lon,cameraLoc_lat,'.',c='k')
-plt.colorbar()
-plt.axis('equal')
-
-from mpl_toolkits.mplot3d import Axes3D
-fig = plt.figure()
-ax = fig.add_subplot(111,projection='3d')
-ax.scatter(lidarX,lidarY,lidarZ,c=lidarZ)
-
 

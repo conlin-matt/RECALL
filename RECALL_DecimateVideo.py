@@ -13,10 +13,9 @@ for remote-GCP extraction. Function pulls 20 equally-spaced frames from the 10 m
 
 """
 # Create function to install package using pip #
-import subprocess
-import sys
-
-def install(package):
+def pipInstall(package):
+    import subprocess
+    import sys
     subprocess.call([sys.executable, "-m", "pip", "install", package])
 
 
@@ -26,7 +25,7 @@ def install(package):
 def RECALL_DecimateVideo(vidPth):
     
     # Import packages #
-    install('opencv-python')
+    pipInstall('opencv-python')
     import cv2 
     
     import os
