@@ -7,7 +7,7 @@ Created on Tue Apr  2 16:26:05 2019
 
 
 Function to download a video clip from a specified WebCAT camera to local directory. The desired year, month, day, and time can be given, 
-however if none are given function will use default values. If you don't like the video from the default date, an examination of WebCAT
+however for those not given the function will use default values. If you don't like the video from the default date, an examination of WebCAT
 clips on the website can help determine the desired date/time to use. 
 
 

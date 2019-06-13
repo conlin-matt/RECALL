@@ -14,6 +14,7 @@ def RECALL_PickGCPs(pc,imDir):
     import glob
     
     #pipInstall('matplotlib==2.1.0')
+    import matplotlib
     import matplotlib.pyplot as plt
     import matplotlib.image as mpimg
     
@@ -22,7 +23,7 @@ def RECALL_PickGCPs(pc,imDir):
     # Plot the image to examine #
     os.chdir(imDir)
     imgs = glob.glob('*.png')
-    img = mpimg.imread(imDir+'/'+imgs[1])
+    img = mpimg.imread(imDir+'/'+imgs[7])
     imgplot = plt.imshow(img)
     
     # Plot the lidar data #
@@ -55,9 +56,12 @@ def RECALL_PickGCPs(pc,imDir):
             curd = os.getcwd()+'/TempForVideo'
             os.chdir(curd)
             imgs = glob.glob('*.png')
-            img = mpimg.imread(curd+'/'+imgs[1])
+            img = mpimg.imread(curd+'/'+imgs[7])
             imgplot = plt.imshow(img)
-            
+            matplotlib.rc('xtick',labelsize=10)
+            matplotlib.rc('ytick',labelsize=10)
+            plt.title('Click on a corresponding point in the image and lidar data.',fontsize=15)
+                       
             pt = plt.ginput(show_clicks=True)
             GCPs_im = np.append(GCPs_im,pt,axis = 0)
             plt.close()
