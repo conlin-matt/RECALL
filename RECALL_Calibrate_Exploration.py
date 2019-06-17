@@ -59,7 +59,7 @@ P = np.vstack((np.transpose(vStar[0:4]),np.transpose(vStar[4:8]),np.transpose(vS
 
 
 
-# Factor P into K by using RQ factorization #
+### Factor P into K by using RQ factorization ###
 
 # Get A and a. I think this is correct????? #
 A = P[:,0:3]
@@ -92,58 +92,65 @@ k = k/k[2,2]
 R = np.vstack([R1,R2,R3])
 t = np.dot(np.linalg.inv(k),P)[:,3]
 
-#
-## Define R more precisly by using angles generated from horizon pick #
-#os.chdir('/Users/matthewconlin/Documents/Research/WebCAT')
-#curd = os.getcwd()+'/TempForVideo'
-#os.chdir(curd)
-#imgs = glob.glob('*.png')
-#img = mpimg.imread(curd+'/'+imgs[1])
-#imgplot = plt.imshow(img)  
-#plt.title('Click two points on the horizon; first on the left side of the image, then the right')     
-#horizonPts = plt.ginput(n=2,show_clicks=True)
-#
-#xa = horizonPts[0][0]
-#ya = horizonPts[0][1]
-#xb = horizonPts[1][0]
-#yb = horizonPts[1][1]
-#
-## Solve for the two angles (psi and xi) using the horizon #
-#psi = math.atan2(ya-yb,xb-xa)
-#dhorizon = ((ya-xb)-(yb-xa))/math.sqrt((xb-xa)**2+(yb-ya)**2)
-#Cc = math.atan2(dhorizon,focal)
-#Rt = 6371000
-#D = math.sqrt((t[2]+Rt)**2-Rt**2)
-#beta = math.acos((t[2]+(.42*(D**2/Rt)))/D)
-#xi = beta-Cc
-#
-## Now compute the three camera orientation angles from the two horizon angles #
-#phi = -math.asin(math.sin(xi)*math.sin(psi))
-#omega = math.acos(math.cos(xi)/(math.sqrt(math.cos(psi)+(math.cos(xi)**2*math.sin(psi)))))
-#kk = int(input('In what direction does the camera look? Press 1 for north-east, 2 for east-south, 3 for north-west, 4 for west-south'))
-#if kk == 1:
-#    kappa = -math.pi/4
-#elif kk == 2:
-#    kappa = -math.pi*3/4
-#elif kk == 3:
-#    kappa = math.pi/4
-#else:
-#    kappa = math.pi*3/4
-#    
-## Define a new R using the euqations in Holland et al. 1997.
-#r11 =(math.cos(omega)*math.cos(kappa))+(math.sin(omega)*math.cos(phi)*math.sin(kappa))  
-#r12 = (-math.sin(omega)*math.cos(kappa))+(math.cos(omega)*math.cos(phi)*math.sin(kappa))
-#r13 = math.sin(phi)*math.sin(kappa)
-#r21 = (-math.cos(omega)*math.sin(kappa))+(math.sin(omega)*math.cos(phi)*math.cos(kappa))
-#r22 = (math.sin(omega)*math.sin(kappa))+(math.cos(omega)*math.cos(phi)*math.cos(kappa))
-#r23 = math.sin(phi)*math.cos(kappa)
-#r31 = math.sin(omega)*math.sin(phi)
-#r32 = math.cos(omega)*math.sin(phi)
-#r33 = -math.cos(phi)
-#Rh = np.vstack([[r11,r12,r13],[r21,r22,r23],[r31,r32,r33]])
 
 
+### Make R better using the horizon ###
 
+os.chdir('/Users/matthewconlin/Documents/Research/WebCAT')
+curd = os.getcwd()+'/TempForVideo'
+os.chdir(curd)
+imgs = glob.glob('*.png')
+img = mpimg.imread(curd+'/'+imgs[1])
+imgplot = plt.imshow(img)  
+plt.title('Click two points on the horizon; first on the left side of the image, then the right')     
+horizonPts = plt.ginput(n=2,show_clicks=True)
+
+xa = horizonPts[0][0]
+ya = horizonPts[0][1]
+xb = horizonPts[1][0]
+yb = horizonPts[1][1]
+
+# Solve for the two angles (psi and xi) using the horizon #
+psi = math.atan2(ya-yb,xb-xa)
+dhorizon = ((ya-xb)-(yb-xa))/math.sqrt((xb-xa)**2+(yb-ya)**2)
+Cc = np.arctan(dhorizon/k[1,1])
+Rt = 6371000
+D = math.sqrt((t[2]+Rt)**2-Rt**2)
+beta = np.arccos((t[2]+(.42*(D**2/Rt)))/D)
+xi = beta-Cc
+
+# Now compute the three camera orientation angles from the two horizon angles #
+phi = -np.arcsin(math.sin(xi)*math.sin(psi))
+omega = np.arccos(math.cos(xi)/(math.sqrt(math.cos(psi)+(math.cos(xi)**2*math.sin(psi)))))
+kk = int(input('In what direction does the camera look? Press 1 for north-east, 2 for east-south, 3 for north-west, 4 for west-south'))
+if kk == 1:
+    kappa = -math.pi/4
+elif kk == 2:
+    kappa = -math.pi*3/4
+elif kk == 3:
+    kappa = math.pi/4
+else:
+    kappa = math.pi*3/4
+
+# Put the angles into the Holland convention -- not sure which correspond to which. #
+tau = omega
+sigma = phi
+phi = kappa
+
+
+# Re-dedine rotation matrix using these angles and equations in Holland et al. (1997) #
+r11 = (math.cos(phi)*math.cos(sigma))+(math.sin(phi)*math.cos(tau)*math.sin(sigma))
+r12 = (-math.sin(phi)*math.cos(sigma))+(math.cos(phi)*math.cos(tau)+math.sin(sigma))
+r13 = math.sin(tau)*math.sin(sigma)
+r21 = (-math.cos(phi)*math.sin(sigma))+(math.sin(phi)*math.cos(tau)*math.cos(sigma))
+r22 = (math.sin(phi)*math.sin(sigma))+(math.cos(phi)*math.cos(tau)*math.cos(sigma))
+r23 = math.sin(tau)*math.cos(sigma)
+r31 = math.sin(phi)*math.sin(tau)
+r32 = math.cos(phi)*math.sin(tau)
+r33 = -math.cos(tau)
+R = np.vstack([[r11,r12,r13],[r21,r22,r23],[r31,r32,r33]])
+# Define t better by asking for user input for elevation estimate #
+t = [0,0,float(input('Estimate the elevation of the camera (in meters): '))]
 
 
 ### Optimize parameter estimation using nonlinear fit with DLT output as initial guess for parameters ###
@@ -171,6 +178,11 @@ def calcResid_withDistortion(toOptVec,GCPs_lidar,GCPs_im):
         x = toOptVec[4]*(camCoords[0]/camCoords[2])
         y = toOptVec[4]*(camCoords[1]/camCoords[2])
         # Distort the projected image coords #
+        dx = 40
+        dy = 40
+        u = x/dx
+        v = y/dy
+        
         uHat = u+((u-toOptVec[2])*((toOptVec[21]*(x**2+y**2))+(toOptVec[22]*(x**2+y**2)**2)))
         vHat = v+((v-toOptVec[5])*((toOptVec[21]*(x**2+y**2))+(toOptVec[22]*(x**2+y**2)**2)))
         
@@ -185,7 +197,7 @@ def calcResid_withDistortion(toOptVec,GCPs_lidar,GCPs_im):
     return residToReturn
 
 # Optimize the parameters using the Levenberg-Marquardt algorithm #
-out = least_squares(calcResid_withDistortion,toOptVec,args=(GCPs_lidar,GCPs_im),method='lm')
+out = least_squares(calcResid_withDistortion,toOptVec,args=(GCPs_lidar,GCPs_im),method='lm',max_nfev=200000)
 optVec = out['x']
 
 # Build optimized K, R, and t and distortion coeffs #
@@ -197,10 +209,15 @@ k2 = optVec[22]
 
 # Test the optimized calibration by computing the residual (reprojection error) for each GCP #
 resid = np.empty([0])
+img = mpimg.imread(curd+'/'+imgs[1])
+imgplot = plt.imshow(img)  
+cVec = ['r','g','b','c','y','m']
 for i in range(0,len(GCPs_im)):
         Xw = np.append(np.array(GCPs_lidar[i,:]),1)
         Xc = GCPs_im[i,:]
 
+        plt.plot(Xc[0],Xc[1],'o',color=cVec[i],markersize=3)
+        
         # Project world to image #
         Ptest = np.dot(Kopt,np.c_[Ropt,topt])
         uv = np.dot(Ptest,Xw)
@@ -213,8 +230,14 @@ for i in range(0,len(GCPs_im)):
         # Perspective transformation from 3d camera coords to ideal image coords #
         x = Kopt[1,1]*(camCoords[0]/camCoords[2])
         y = Kopt[1,1]*(camCoords[1]/camCoords[2])
+        dx = 40
+        dy = 40
+        uProj = x/dx
+        vProj = y/dy
         uProjD = uProj+((uProj-Kopt[0,2])*((k1*(x**2+y**2))+(k2*(x**2+y**2)**2)))
         vProjD = vProj+((vProj-Kopt[1,2])*((k1*(x**2+y**2))+(k2*(x**2+y**2)**2)))
+        
+        plt.plot(uProjD,vProjD,'+',color=cVec[i],markersize=5)
         
         # Compute residual #
         residV = np.array([Xc[0]-uProjD,Xc[1]-vProjD]) 
