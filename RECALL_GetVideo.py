@@ -77,7 +77,7 @@ def RECALL_GetVideo(cam,year=2018,month=6,day=3,hour=1000):
 
 
 
-vidPth = RECALL_GetVideo('follypiernorth')       
+vidPth = RECALL_GetVideo('miami40th')       
         
         
         

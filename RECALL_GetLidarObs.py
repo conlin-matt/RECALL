@@ -34,7 +34,7 @@ def drawProgressBar(percent, barLen = 20):
 
 def RECALL_GetLidarObs(cameraLoc_lat,cameraLoc_lon):
     """
-    Function which will search for existing lidar datsets which cover the FOV of the camera of location
+    Function which will search for existing lidar datsets which cover the FOV of the camera at location
     given by cameraLat and cameraLon. The function will give the user all datasets, and will ask the user
     to choose one to donwload.
     """
@@ -307,6 +307,6 @@ def RECALL_GetLidarObs(cameraLoc_lat,cameraLoc_lon):
     return lidarDat
         
     
-lidarDat = RECALL_GetLidarObs(32.654731,-79.939322)    
+lidarDat = RECALL_GetLidarObs(25.812227, -80.122400)    
     
     

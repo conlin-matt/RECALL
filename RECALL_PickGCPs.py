@@ -28,7 +28,7 @@ def RECALL_PickGCPs(pc,imDir):
     
     # Plot the lidar data #
     v = pptk.viewer(pc,pc.iloc[:,2])
-    v.set(point_size=0.1,theta=-25,phi=0,lookat=[0,0,13],color_map_scale=[-1,10],r=0)
+    v.set(point_size=0.1,theta=-25,phi=0,lookat=[0,0,50],color_map_scale=[-1,10],r=0)
     
     
     
@@ -50,7 +50,6 @@ def RECALL_PickGCPs(pc,imDir):
         
         # Pick the corresponding point in the image #
         startIm=int(input('Press 1 when you are ready to pick the corresponding point in the image. '))
-        plt.close()
         if startIm==1:
             os.chdir('/Users/matthewconlin/Documents/Research/WebCAT')
             curd = os.getcwd()+'/TempForVideo'

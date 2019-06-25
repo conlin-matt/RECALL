@@ -1,64 +1,158 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Thu May 23 15:27:15 2019
+Created on Thu Jun 20 10:16:23 2019
 
 @author: matthewconlin
 """
 
-# Need to run %gui tk in console, and/or go to preferences and change graphics backend to tk #
 
-import tkinter
-
-# Create the window #
-root = tkinter.Tk()
-root.title('RECALL')
-
-# Create the main frame #
-placeVar = tkinter.StringVar(root)
-choices = {'Miami','Twin Piers/Bradenton','St. Augustine','Folly Beach South','Folly Beach North','Cherry Grove South','Buxton','Other'}
-
-# Create the frame %
-tkinter.Label(root,text = 'Select Camera:').grid(row=0)
-menu = tkinter.OptionMenu(root,placeVar,*choices).grid(row=0,column=1)
-
-root.mainloop()
-
-
-import tkinter as tk 
-r = tk.Tk() 
-r.title('Counting Seconds') 
-button = tk.Button(r, text='Stop', width=25, command=r.destroy) 
-button.pack() 
-r.mainloop() 
+from PyQt5.QtWidgets import *
+import PyQt5.QtGui as gui
+import PyQt5.QtCore as qtCore
+import RECALL
+import sys
+import os
 
 
 
-import tkinter as tk
+class CameraLocationWindow(QMainWindow):
+   def __init__(self):
+        super().__init__()    
+        
+        if not QApplication.instance():
+            app = QApplication(sys.argv)
+        else:
+            app = QApplication.instance()  
+        
+        self.resize(250,150)
+        self.center()
+        self.title = 'RECALL Test'
 
-class Application(tk.Frame):
-    def __init__(self, master=None):
-        super().__init__(master)
-        self.master = master
-        self.pack()
-        self.create_widgets()
-
-    def create_widgets(self):
-        self.hi_there = tk.Button(self)
-        self.hi_there["text"] = "Hello World\n(click me)"
-        self.hi_there["command"] = self.say_hi
-        self.hi_there.pack(side="top")
-
-        self.quit = tk.Button(self, text="QUIT", fg="red",
-                              command=self.master.destroy)
-        self.quit.pack(side="bottom")
-
-    def say_hi(self):
-        print("hi there, everyone!")
-
-root = tk.Tk()
-app = Application(master=root)
-app.mainloop()
+        self.opt = QComboBox(self)
+        self.opt.addItem('Miami')
+        self.opt.addItem('Bradenton')
+        
+        self.setCentralWidget(self.opt)
+        self.show()
+        
+   def center(self):
+       qr = self.frameGeometry()
+       cp = QDesktopWidget().availableGeometry().center()
+       qr.moveCenter(cp)
+       self.move(qr.topLeft())
 
 
+class ChooseCameraWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        
+        if not QApplication.instance():
+            app = QApplication(sys.argv)
+        else:
+            app = QApplication.instance()  
+            
+        self.resize(250,150)
+        self.center()
+        self.title = 'RECALL Test'
+        
+        
+        w = QWidget()
+        vBig = QVBoxLayout(w)
+        vInner = QVBoxLayout()
+        
+        self.t = QLabel('Choose camera type:')
+        self.WebCatOpt = QRadioButton('Select WebCAT camera from list')
+        self.OtherOpt = QRadioButton('Input location of other camera')
+        
+        vInner.addWidget(self.t)
+        vInner.addWidget(self.WebCatOpt)
+        vInner.addWidget(self.OtherOpt)
+        vBig.addLayout(vInner)
+        
+        self.WebCatOpt.clicked.connect(self.WebCAT_select)  
+        w.show()
+        sys.exit(app.exec_())
 
+
+    def center(self):
+        qr = self.frameGeometry()
+        cp = QDesktopWidget().availableGeometry().center()
+        qr.moveCenter(cp)
+        self.move(qr.topLeft())
+    def WebCAT_select(self):
+        self.w = CameraLocationWindow()  
+        self.hide()
+        self.w.show()
+ 
+
+test = ChooseCameraWindow()
+
+
+
+
+
+import sys
+from PyQt5 import QtGui
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QPushButton, 
+                             QToolTip, QMessageBox, QLabel)
+
+class Window2(QMainWindow):                           # <===
+    def __init__(self):
+        super(Window2,self).__init__()
+        self.setWindowTitle("Window22222")
+        
+        w = QWidget()
+        vBig = QVBoxLayout(w)
+        vInner = QVBoxLayout()
+        
+        self.t = QLabel('Choose camera type:')
+        self.WebCatOpt = QRadioButton('Select WebCAT camera from list')
+        self.OtherOpt = QRadioButton('Input location of other camera')
+        
+        vInner.addWidget(self.t)
+        vInner.addWidget(self.WebCatOpt)
+        vInner.addWidget(self.OtherOpt)
+        vBig.addLayout(vInner)
+        
+        self.show()
+
+
+
+class Window(QMainWindow):
+    def __init__(self):
+        super(Window,self).__init__()
+
+        self.title = "First Window"
+        self.top = 100
+        self.left = 100
+        self.width = 680
+        self.height = 500
+
+        self.pushButton = QPushButton("Start", self)
+        self.pushButton.move(275, 200)
+        self.pushButton.setToolTip("<h3>Start the Session</h3>")
+
+        self.pushButton.clicked.connect(self.window2)              # <===
+
+        self.main_window()
+
+    def main_window(self):
+        self.label = QLabel("Manager", self)
+        self.label.move(285, 175)
+        self.setWindowTitle(self.title)
+        self.setGeometry(self.top, self.left, self.width, self.height)
+        self.show()
+
+    def window2(self):                                             # <===
+        self.w = Window2()
+        self.w.show()
+
+
+if __name__ == "__main__":
+    if not QApplication.instance():
+        app = QApplication(sys.argv)
+    else:
+        app = QApplication.instance()
+    window = Window()
+    sys.exit(app.exec())

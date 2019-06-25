@@ -93,9 +93,10 @@ R = np.vstack([R1,R2,R3])
 t = np.dot(np.linalg.inv(k),P)[:,3]
 
 
+# Define t better by asking for user input for elevation estimate #
+t = [0,0,float(input('Estimate the elevation of the camera (in meters): '))]
 
 ### Make R better using the horizon ###
-
 os.chdir('/Users/matthewconlin/Documents/Research/WebCAT')
 curd = os.getcwd()+'/TempForVideo'
 os.chdir(curd)
@@ -122,7 +123,7 @@ xi = beta-Cc
 # Now compute the three camera orientation angles from the two horizon angles #
 phi = -np.arcsin(math.sin(xi)*math.sin(psi))
 omega = np.arccos(math.cos(xi)/(math.sqrt(math.cos(psi)+(math.cos(xi)**2*math.sin(psi)))))
-kk = int(input('In what direction does the camera look? Press 1 for north-east, 2 for east-south, 3 for north-west, 4 for west-south'))
+kk = int(input('In what direction does the camera look? Press 1 for north-east, 2 for east-south, 3 for north-west, 4 for west-south: '))
 if kk == 1:
     kappa = -math.pi/4
 elif kk == 2:
@@ -149,8 +150,7 @@ r31 = math.sin(phi)*math.sin(tau)
 r32 = math.cos(phi)*math.sin(tau)
 r33 = -math.cos(tau)
 R = np.vstack([[r11,r12,r13],[r21,r22,r23],[r31,r32,r33]])
-# Define t better by asking for user input for elevation estimate #
-t = [0,0,float(input('Estimate the elevation of the camera (in meters): '))]
+
 
 
 ### Optimize parameter estimation using nonlinear fit with DLT output as initial guess for parameters ###
@@ -178,8 +178,8 @@ def calcResid_withDistortion(toOptVec,GCPs_lidar,GCPs_im):
         x = toOptVec[4]*(camCoords[0]/camCoords[2])
         y = toOptVec[4]*(camCoords[1]/camCoords[2])
         # Distort the projected image coords #
-        dx = 40
-        dy = 40
+        dx = .2
+        dy = .2
         u = x/dx
         v = y/dy
         
@@ -197,7 +197,7 @@ def calcResid_withDistortion(toOptVec,GCPs_lidar,GCPs_im):
     return residToReturn
 
 # Optimize the parameters using the Levenberg-Marquardt algorithm #
-out = least_squares(calcResid_withDistortion,toOptVec,args=(GCPs_lidar,GCPs_im),method='lm',max_nfev=200000)
+out = least_squares(calcResid_withDistortion,toOptVec,args=(GCPs_lidar,GCPs_im),method='lm',max_nfev=100000,xtol=None)
 optVec = out['x']
 
 # Build optimized K, R, and t and distortion coeffs #
@@ -230,8 +230,8 @@ for i in range(0,len(GCPs_im)):
         # Perspective transformation from 3d camera coords to ideal image coords #
         x = Kopt[1,1]*(camCoords[0]/camCoords[2])
         y = Kopt[1,1]*(camCoords[1]/camCoords[2])
-        dx = 40
-        dy = 40
+        dx = .2
+        dy = .2
         uProj = x/dx
         vProj = y/dy
         uProjD = uProj+((uProj-Kopt[0,2])*((k1*(x**2+y**2))+(k2*(x**2+y**2)**2)))
