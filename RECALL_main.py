@@ -8,6 +8,7 @@ Created on Thu Jun 20 10:16:23 2019
 
 
 from PyQt5.QtWidgets import *
+from PyQt5.QtGui import QPixmap,QIcon
 import PyQt5.QtGui as gui
 import PyQt5.QtCore as qtCore
 import RECALL
@@ -16,9 +17,45 @@ import os
 import pickle
 import glob
 
+
 wd = '/Users/matthewconlin/Documents/Research/WebCAT/'
+                       
+class ShowImageWindow(QWidget):
+   
+   def __init__(self):
+        super().__init__()    
+        
+        if not QApplication.instance():
+            app = QApplication(sys.argv)
+        else:
+            app = QApplication.instance()             
+        self.initUI()
+        
+   def initUI(self):
+       # Get all the frames #
+       frames = glob.glob('frame'+'*')
+       frame = frames[1]
+       
+       label = QLabel()
+       pixmap = QPixmap(frame)
+       label.setPixmap(pixmap)
 
-
+       #label.resize(pixmap.width(),pixmap.height())
+       txt = QLabel('Is this image clear enough to allow feature identification? Pressing "Yes" will launch the lidar data download process.')
+       noBut = QPushButton('No')
+       yesBut = QPushButton('Yes')
+       
+       grd = QGridLayout()
+       grd.addWidget(label,0,0,4,4)
+       grd.addWidget(txt,5,0,1,4)
+       grd.addWidget(noBut,6,0,1,1)
+       grd.addWidget(yesBut,6,1,1,1)
+       
+       self.setLayout(grd)
+       self.setGeometry(400,100,10,10)
+       self.setWindowTitle('RECALL')
+       self.show()
+        
 
 class OtherCameraLocationInputWindow(QWidget):
    def __init__(self):
@@ -31,35 +68,55 @@ class OtherCameraLocationInputWindow(QWidget):
         self.initUI()
         
    def initUI(self):
+       lblDir1 = QLabel('Input the name of this camera:')
+       self.bxName = QLineEdit()
        lblDir = QLabel('Input the location (lat/lon) of the camera below:')
        lblLat = QLabel('Camera Latitude (decimal degrees):')
        lblLon = QLabel('Camera Longitude (decimal degrees):')
-       bxLat = QLineEdit()
-       bxLon = QLineEdit()
+       self.bxLat = QLineEdit()
+       self.bxLon = QLineEdit()
+       lblPth = QLabel('Input the path to the folder containing the imagery (in .mp4 format):')
+       self.bxPth = QLineEdit()
        backBut = QPushButton('< Back')
        contBut = QPushButton('Continue >')
        
        backBut.clicked.connect(self.GoBack)
-       #contBut.clicked.connect(self.GotoDownloadVid)
+       contBut.clicked.connect(self.getInputs)
        
        grd = QGridLayout()
-       grd.addWidget(lblDir,0,0,1,4)
-       grd.addWidget(lblLat,1,0,1,2)
-       grd.addWidget(bxLat,1,2,1,2)
-       grd.addWidget(lblLon,2,0,1,2)
-       grd.addWidget(bxLon,2,2,1,2)
-       grd.addWidget(backBut,3,0,1,1)
-       grd.addWidget(contBut,3,3,1,1)
+       grd.addWidget(lblDir1,0,0,1,3)
+       grd.addWidget(self.bxName,0,3,1,3)
+       grd.addWidget(lblDir,1,0,1,6)
+       grd.addWidget(lblLat,2,1,1,3)
+       grd.addWidget(self.bxLat,2,4,1,2)
+       grd.addWidget(lblLon,3,1,1,3)
+       grd.addWidget(self.bxLon,3,4,1,2)
+       grd.addWidget(lblPth,4,0,1,6)
+       grd.addWidget(self.bxPth,5,0,1,4)
+       grd.addWidget(backBut,6,0,1,2)
+       grd.addWidget(contBut,6,4,1,2)
        
        self.setLayout(grd)
        
-       self.setGeometry(400,100,300,150)
+       self.setGeometry(400,100,200,250)
        self.setWindowTitle('RECALL')
        self.show()
        
    def GoBack(self):
        self.close()
-       self.backToOne = ChooseCameraWindow()       
+       self.backToOne = ChooseCameraWindow()    
+       
+   def getInputs(self):
+       cameraName = self.bxName.text()
+       cameraLocation = [float(self.bxLat.text()),float(self.bxLon.text())]
+       pthToImagery = self.bxPth.text()
+       # Save the camera name and location #
+       with open(wd+'CameraLocation.pkl','wb') as f:
+           pickle.dump(cameraLocation,f)
+       with open(wd+'CameraName.pkl','wb') as f:
+           pickle.dump(cameraName,f)
+       with open(wd+'ImageryPath.pkl','wb') as f:
+           pickle.dump(pthToImagery,f)       
 
 
 class WebCATLocationWindow(QWidget):
@@ -74,9 +131,7 @@ class WebCATLocationWindow(QWidget):
         self.initUI()
         
    def initUI(self):
-       
-       
-              
+                    
        txt = QLabel('Select WebCAT camera:')
        opt = QComboBox()
        opt.addItem('--')
@@ -94,7 +149,7 @@ class WebCATLocationWindow(QWidget):
        
        opt.activated.connect(self.getSelected)
        backBut.clicked.connect(self.GoBack)
-       contBut.clicked.connect(self.DownloadVid)
+       contBut.clicked.connect(self.DownloadVidAndExtractStills)
        
        grid = QGridLayout()
        
@@ -109,7 +164,7 @@ class WebCATLocationWindow(QWidget):
        self.setGeometry(400,100,300,100)
        self.setWindowTitle('RECALL')
        self.show()
-        
+
    def getSelected(self,item):
           
        WebCATdict = {'Placeholder':[0,0],
@@ -130,23 +185,36 @@ class WebCATLocationWindow(QWidget):
            pickle.dump(cameraLocation,f)
        with open(wd+'CameraName.pkl','wb') as f:
            pickle.dump(cameraName,f)
- 
+   
    def GoBack(self):
        self.close()
        self.backToOne = ChooseCameraWindow()
        
-   def DownloadVid(self):
+   def DownloadVidAndExtractStills(self):
+       # Download the video #
        f = open(wd+'CameraName.pkl','rb')
-       vidPth = RECALL.GetVideo(pickle.load(f))
+       camToInput = pickle.load(f)
+       vidFile = RECALL.GetVideo(camToInput)
        
-#       # Deal with Buxon name change #
+       # Get the path to the video file #
+       fullVidPth = wd + vidFile   
+        
+       # Decimate the video to 20 still-images #
+       RECALL.DecimateVideo(fullVidPth)
+       self.close()
+       self.imWindow = ShowImageWindow()
+       self.imWindow.show()
+
+       
+#       # Deal with Buxton name change #
 #       fname = glob.glob(pickle.load(f)+'*')[0]
 #       fs = os.path.getsize(wd+fname)
 #       if fs<1000:
 #           vidPth = RECALL.GetVideo('buxtonnorthcam')
        
-       #RECALL.DecimateVideo(vidPth)
-
+       # Make sure we are still in the same directory as the video # 
+       #os.chdir(vidPth.rsplit('/',1)[0]) # Go to the directory defined by the path prior to the final backslash in the vidFile string #
+    
 
 class ChooseCameraWindow(QWidget):
     def __init__(self):
