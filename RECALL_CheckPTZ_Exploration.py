@@ -75,7 +75,7 @@ def RECALL_GetVideo(cam,year=2018,month=6,day=3,hour=1000):
 
 
 
-vidPth = RECALL_GetVideo('follypiernorth') 
+vidPth = RECALL_GetVideo('miami40th') 
 
 
 
@@ -194,46 +194,46 @@ def RECALL_DecimateVideo(vidPth):
 
     
         
-        
+        from scipy import signal 
         
 
-#        image_YCrCb = cv2.cvtColor(image,cv2.COLOR_BGR2YCrCb)
-#        xHorizon = np.array([])
-#        yHorizon = np.array([])
-#        for iCol in range(0,len(image_YCrCb[0,:])):
-#            col_Y = image_YCrCb[:,iCol,0]
-#            col_Cr = image_YCrCb[:,iCol,1]
-#            col_Cb = image_YCrCb[:,iCol,2]
+        image_YCrCb = cv2.cvtColor(image,cv2.COLOR_BGR2YCrCb)
+        xHorizon = np.array([])
+        yHorizon = np.array([])
+        for iCol in range(0,len(image_YCrCb[0,:])):
+            col_Y = image_YCrCb[:,iCol,0]
+            col_Cr = image_YCrCb[:,iCol,1]
+            col_Cb = image_YCrCb[:,iCol,2]
+            
+            col_Cb_peaks = signal.find_peaks(col_Cb)
+            col_Y_peaks = signal.find_peaks(-col_Y)
+            
+            iHorizons = [a for a in col_Cb_peaks[0] if a in col_Y_peaks[0]]
+            if iHorizons:
+                iHorizon = iHorizons[0]
+            
+                xHorizon = np.append(xHorizon,iCol)
+                yHorizon = np.append(yHorizon,iHorizon)
+            else:
+                xHorizon = np.append(xHorizon,0)
+                yHorizon = np.append(yHorizon,0)
+#            plt.figure(1)
+#            plt.plot(col_Y,'r')
+#            plt.plot(col_Cb,'b')
+#            plt.plot(col_Cb_peaks[0],col_Cb[col_Cb_peaks[0]],'g*')
+#            plt.plot(col_Y_peaks[0],col_Y[col_Y_peaks[0]],'g*')
+#            plt.plot(iHorizon,col_Cb[iHorizon],'k*')
+#            plt.plot(iHorizon,col_Y[iHorizon],'k*')            
+#            plt.show()
 #            
-#            col_Cb_peaks = signal.find_peaks(col_Cb)
-#            col_Y_peaks = signal.find_peaks(-col_Y)
-#            
-#            iHorizons = [a for a in col_Cb_peaks[0] if a in col_Y_peaks[0]]
-#            if iHorizons:
-#                iHorizon = iHorizons[0]
-#            
-#                xHorizon = np.append(xHorizon,iCol)
-#                yHorizon = np.append(yHorizon,iHorizon)
-#            else:
-#                xHorizon = np.append(xHorizon,0)
-#                yHorizon = np.append(yHorizon,0)
-##            plt.figure(1)
-##            plt.plot(col_Y,'r')
-##            plt.plot(col_Cb,'b')
-##            plt.plot(col_Cb_peaks[0],col_Cb[col_Cb_peaks[0]],'g*')
-##            plt.plot(col_Y_peaks[0],col_Y[col_Y_peaks[0]],'g*')
-##            plt.plot(iHorizon,col_Cb[iHorizon],'k*')
-##            plt.plot(iHorizon,col_Y[iHorizon],'k*')            
-##            plt.show()
-##            
-##            plt.pause(2)  
-##            plt.close()
-#        
-#        
-#        plt.figure(1)
-#        plt.imshow(image)
-#        plt.plot(xHorizon,yHorizon,'r.')
-#        
+#            plt.pause(2)  
+#            plt.close()
+        
+        
+        plt.figure(1)
+        plt.imshow(image)
+        plt.plot(xHorizon,yHorizon,'r.')
+        
 #        
 #        
 #        
