@@ -8,7 +8,7 @@ Created on Thu Jun 20 10:16:23 2019
 
 
 from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QPixmap,QIcon
+from PyQt5.QtGui import QPixmap,QIcon,QMouseEvent
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QAbstractTableModel
 import PyQt5.QtGui as gui
 import PyQt5.QtCore as qtCore
@@ -19,33 +19,486 @@ import pickle
 import glob
 import requests
 import pandas as pd
-
+import pptk
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 
 wd = '/Users/matthewconlin/Documents/Research/WebCAT/'
                        
+
+class PickGCPsWindow(QWidget):
+   def __init__(self):
+        super().__init__()    
+        
+        if not QApplication.instance():
+            app = QApplication(sys.argv)
+        else:
+            app = QApplication.instance()             
+        #self.initUI()
+        
+        self.figure = plt.figure()
+        self.canvas = FigureCanvas(self.figure)
+        
+        frames = glob.glob('frame'+'*')
+        frame = frames[1]
+        
+        img = mpimg.imread(wd+'/'+frame)
+        imgplot = plt.imshow(img)
+        
+        self.canvas.draw()
+        
+        self.introLab = QLabel('Welcome to the GCP picking module! Here, you will be guided through the process of co-locating points in the image and the lidar observations. You will need to identify the correspondence of at least 6 unique points for the calibration to work.')
+        self.introLab.setWordWrap(True)
+        self.goLab = QLabel('Ready to co-locate a point?:')
+        self.goBut = QPushButton('Go')
+        
+        self.goBut.clicked.connect(self.getPoints1)
+        
+        self.grd = QGridLayout()
+        self.grd.addWidget(self.introLab,0,0,2,4)
+        self.grd.addWidget(self.canvas,2,0,4,4)
+        self.grd.addWidget(self.goLab,7,0,1,1)
+        self.grd.addWidget(self.goBut,7,3,1,1)
+        
+        self.setLayout(self.grd)
+        
+        self.setWindowTitle('RECALL')
+        self.show()
+
+        
+   def getPoints1(self):
+       print('In Function')
+
+       while self.grd.count() > 0:
+           item = self.grd.takeAt(0)
+           if not item:
+               continue
+
+           w = item.widget()
+           if w:
+               w.deleteLater()
+
+#       self.grd.removeWidget(self.introLab)
+#       self.introLab.deleteLater()
+#       self.introLab = None
+#       self.grd.removeWidget(self.goLab)
+#       self.goLab.deleteLater()
+#       self.goLab = None
+#       self.grd.removeWidget(self.goBut)
+#       self.goBut.deleteLater()
+#       self.goBut = None
+
+       
+       self.dirLab = QLabel('Click on the point in the image:')
+       self.grd.addWidget(self.dirLab,0,0,1,2)
+       
+       pt = plt.ginput(show_clicks=True)   
+       print(pt)
+       
+       self.afterClick()
+       
+   def afterClick(self):
+       print('In Function')
+       self.grd.removeWidget(self.dirLab)
+       self.dirLab.deleteLater()
+       self.dirLab = None
+       
+       savedLab = QLabel('Image coordinate of point saved!')
+       dirLab2 = QLabel('Now, identify the point lidar point cloud (click Help for directions). When done, return here and Continue (to pick more) or Stop (to finish picking).')
+       contBut = QPushButton('Continue')
+       stopBut = QPushButton('Stop')
+       helpBut = QPushButton('Help')
+       
+       self.grd.addWidget(savedLab,0,0,1,2)
+       self.grd.addWidget(dirLab2,1,0,1,2)
+       self.grd.addWidget(stopBut,7,2,1,1)
+       self.grd.addWidget(contBut,7,3,1,1)
+       self.grd.addWidget(helpBut,7,0,1,1)
+
+
+       
+        
+        
+        
+
+class CreateLidarPC(QThread):   
     
-class ChooseLidarWindow(QAbstractTableModel):
-    def __init__(self, data, parent=None):
-        QAbstractTableModel.__init__(self, parent)
-        self._data = data
+    import pandas as pd 
+    
+#    threadSignal = pyqtSignal('PyQt_PyObject')
+    finishSignal = pyqtSignal('PyQt_PyObject')
 
-    def rowCount(self, parent=None):
-        return len(self._data.values)
+    def __init__(self,cameraLoc_lat,cameraLoc_lon):
+        super().__init__()
+        self.cameraLoc_lat = cameraLoc_lat
+        self.cameraLoc_lon = cameraLoc_lon
+        
+    def run(self):
+        
+        f = open(wd+'lidarDat.pkl','rb')
+        lidarDat = pickle.load(f)
+       
+        # Turn the numpy array into a Pandas data frame #
+        pc = pd.DataFrame({'x':lidarDat[:,0],'y':lidarDat[:,1],'z':lidarDat[:,2]})
+        
+        
+        # Convert eveything to UTM and translate to camera at (0,0) #
+        #pipInstall('utm')
+        import utm
+        import numpy
+        utmCoordsX = list()
+        utmCoordsY = list()
+        for ix,iy in zip(pc['x'],pc['y']):
+            utmCoords1 = utm.from_latlon(iy,ix)
+            utmCoordsX.append( utmCoords1[0] )
+            utmCoordsY.append( utmCoords1[1] )
+        utmCoords = numpy.array([utmCoordsX,utmCoordsY])
+            
+        utmCam = utm.from_latlon(self.cameraLoc_lat,self.cameraLoc_lon)
+            
+        # Translate to camera position #
+        utmCoords[0,:] = utmCoords[0,:]-utmCam[0]
+        utmCoords[1,:] = utmCoords[1,:]-utmCam[1]
+        
+            
+        # Put these new coordinates into the point cloud %
+        pc['x'] = numpy.transpose(utmCoords[0,:])
+        pc['y'] = numpy.transpose(utmCoords[1,:])
 
-    def columnCount(self, parent=None):
-        return self._data.columns.size
+            
+        with open(wd+'lidarPC.pkl','wb') as f:
+            pickle.dump(pc,f)
+            
+        self.finishSignal.emit(1)    
+        
+        print('Thread Done')
+        
 
-    def data(self, index, role=Qt.DisplayRole):
-        if index.isValid():
-            if role == Qt.DisplayRole:
-                return str(self._data.values[index.row()][index.column()])
-        return None
+class DownloadLidar(QThread):
 
-    def headerData(self, col, orientation, role):
-        if orientation == Qt.Horizontal and role ==Qt.DisplayRole:
-            return self._data.columns[col]
-        return None
+    threadSignal = pyqtSignal('PyQt_PyObject')
+    finishSignal = pyqtSignal('PyQt_PyObject')
 
+    def __init__(self,cameraLoc_lat,cameraLoc_lon):
+        super().__init__()
+        self.cameraLoc_lat = cameraLoc_lat 
+        self.cameraLoc_lon = cameraLoc_lon
+        
+    def run(self):
+#        print('Starting Thread')
+#        for ii in range(1,self.i,1):
+#            perDone = ii/self.i            
+#            self.threadSignal.emit(perDone)
+#        print('Thread Done')
+        
+        
+        print('Thread Started')
+        import ftplib
+        import numpy
+        import math
+        import json    
+        import pdal
+        
+        f = open(wd+'tilesKeep.pkl','rb')
+        tilesKeep = pickle.load(f)
+        
+        f = open(wd+'chosenLidarID.pkl','rb')
+        IDToDownload = pickle.load(f)
+    
+        
+        ftp = ftplib.FTP('ftp.coast.noaa.gov',timeout=1000000)
+        ftp.login('anonymous','anonymous')
+        ftp.cwd('/pub/DigitalCoast/lidar2_z/geoid12b/data/'+str(IDToDownload))
+        i = 0
+        lidarDat = numpy.empty([0,3])
+        for thisFile in tilesKeep:
+            
+            i = i+1
+            perDone = i/len(tilesKeep)
+            self.threadSignal.emit(perDone)
+           
+            # Save the laz file locally - would prefer not to do this, but can't seem to get the pipeline to download directly from the ftp??? #
+            gfile = open('lazfile.laz','wb') # Create the local file #
+            ftp.retrbinary('RETR '+thisFile,gfile.write) # Copy the contents of the file on FTP into the local file #
+            gfile.close() # Close the remote file #
+                
+            # Construct the json PDAL pipeline to read the file and take only points within +-.5 degree x and y of the camera. Read the data in as an array #
+            fullFileName = wd+'lazfile.laz'
+            pipeline=(json.dumps([{'type':'readers.las','filename':fullFileName},{'type':'filters.range','limits':'X['+str(self.cameraLoc_lon-.5)+':'+str(self.cameraLoc_lon+.5)+'],Y['+str(self.cameraLoc_lat-.5)+':'+str(self.cameraLoc_lat+.5)+']'}],sort_keys=False,indent=4))
+                
+            # Go through the pdal steps to use the pipeline
+            r = pdal.Pipeline(pipeline)  
+            r.validate()  
+            r.execute()
+                
+            # Get the arrays of data and format them so we can use them #
+            datArrays = r.arrays
+            datArrays = datArrays[int(0)] # All of the fields are now accessable with the appropriate index #
+              # allDatArrays.append(datArrays) 
+            
+            # Extract x,y,z values #
+            lidarX = datArrays['X']
+            lidarY = datArrays['Y']
+            lidarZ = datArrays['Z']
+        
+            # Only take points within 500 m of the camera #
+            R = 6373000 # ~radius of Earth in m #
+            dist = list()
+            for px,py in zip(lidarX,lidarY):
+                dlon = math.radians(abs(px)) - math.radians(abs(self.cameraLoc_lon))
+                dlat = math.radians(abs(py)) - math.radians(abs(self.cameraLoc_lat))
+                a = math.sin(dlat/2)**2 + math.cos(math.radians(abs(py))) * math.cos(math.radians(abs(self.cameraLoc_lat))) * math.sin(dlon/2)**2
+                c = 2*math.atan2(math.sqrt(a),math.sqrt(1-a))
+                dist.append(R*c)
+           
+            lidarXsmall = list()
+            lidarYsmall = list()
+            lidarZsmall = list()    
+            for xi,yi,zi,di in zip(lidarX,lidarY,lidarZ,dist):
+                if di<300:
+                    lidarXsmall.append(xi)
+                    lidarYsmall.append(yi)
+                    lidarZsmall.append(zi)
+            lidarXYZsmall = numpy.vstack((lidarXsmall,lidarYsmall,lidarZsmall))
+            lidarXYZsmall = numpy.transpose(lidarXYZsmall)
+            
+            lidarDat = numpy.append(lidarDat,lidarXYZsmall,axis=0)
+
+            
+        with open(wd+'lidarDat.pkl','wb') as f:
+            pickle.dump(lidarDat,f)
+            
+        self.finishSignal.emit(1)   
+        
+        print('Thread Done')
+
+
+
+class GetCorrectLidarSetThread(QThread):
+
+    threadSignal = pyqtSignal('PyQt_PyObject')
+    finishSignal = pyqtSignal('PyQt_PyObject')
+
+    def __init__(self,cameraLoc_lat,cameraLoc_lon):
+        super().__init__()
+        self.cameraLoc_lat = cameraLoc_lat 
+        self.cameraLoc_lon = cameraLoc_lon
+
+    def run(self):
+#        print('Starting Thread')
+#        for ii in range(1,self.i,1):
+#            perDone = ii/self.i            
+#            self.threadSignal.emit(perDone)
+#        print('Thread Done')
+        
+        
+        print('Thread Started')
+        import ftplib
+        #pipInstall('pyshp')
+        import shapefile
+        #pipInstall('utm')
+        import utm
+        import numpy
+        import math
+        
+        f = open(wd+'chosenLidarID.pkl','rb')
+        IDToDownload = pickle.load(f)
+    
+        
+        # Establish the location of the camera in UTM coordinates #
+        cameraLoc_UTMx = utm.from_latlon(self.cameraLoc_lat,self.cameraLoc_lon)[0]
+        cameraLoc_UTMy = utm.from_latlon(self.cameraLoc_lat,self.cameraLoc_lon)[1]
+    
+        
+        ftp = ftplib.FTP('ftp.coast.noaa.gov',timeout=1000000)
+        ftp.login('anonymous','anonymous')
+        ftp.cwd('/pub/DigitalCoast/lidar2_z/geoid12b/data/'+str(IDToDownload))
+        files = ftp.nlst()
+        
+        
+        # Now that we have the dataset, we need to search the dataset for tiles which are near the camera. Otherwise,
+        # we will be loading a whole lot of useless data into memory, which takes forever. #
+        
+        # Load the datset shapefile and dbf file from the ftp. These describe the tiles #
+        shpFile = str([s for s in files if "shp" in s])
+        shpFile = shpFile[2:len(shpFile)-2]
+        dbfFile = str([s for s in files if "dbf" in s])
+        dbfFile = dbfFile[2:len(dbfFile)-2]
+        
+        # Write them locally so we can work with them #
+        gfile = open('shapefileCreate.shp','wb') # Create the local file #
+        ftp.retrbinary('RETR '+shpFile,gfile.write)
+        
+        gfile = open('shapefileCreate.dbf','wb') # Create the local file #
+        ftp.retrbinary('RETR '+dbfFile,gfile.write)
+        
+        # Load them into an object using the PyShp library #
+        sf = shapefile.Reader(wd+"shapefileCreate.shp")
+        
+        # Loop through all of the tiles to find the ones close to the camera #
+        tilesKeep = list()
+        i = 0
+        for shapeNum in range(0,len(sf)):
+            
+            i = i+1
+            perDone = i/len(sf)
+            self.threadSignal.emit(perDone)
+
+            
+            bx = sf.shape(shapeNum).bbox # Get the bounding box #
+            # Get the bounding box verticies in utm. bl = bottom-left, etc. #
+            bx_bl = utm.from_latlon(bx[1],bx[0]) 
+            bx_br = utm.from_latlon(bx[1],bx[2]) 
+            bx_tr = utm.from_latlon(bx[3],bx[2]) 
+            bx_tl = utm.from_latlon(bx[3],bx[0]) 
+            # Min distance between camera loc and horizontal lines connecting tile verticies #
+            line_minXbb = numpy.array([numpy.linspace(bx_bl[0],bx_br[0],num=1000),numpy.linspace(bx_bl[1],bx_br[1],num=1000)])
+            line_maxXbb = numpy.array([numpy.linspace(bx_tl[0],bx_tr[0],num=1000),numpy.linspace(bx_tl[1],bx_tr[1],num=1000)])
+            dist1 = list()
+            dist2 = list()
+            for ixMin,iyMin,ixMax,iyMax in zip(line_minXbb[0,:],line_minXbb[1,:],line_maxXbb[0,:],line_maxXbb[1,:]):
+                dist1.append(math.sqrt((ixMin-cameraLoc_UTMx)**2 + (iyMin-cameraLoc_UTMy)**2))
+                dist2.append(math.sqrt((ixMax-cameraLoc_UTMx)**2 + (iyMax-cameraLoc_UTMy)**2))
+            # Keep the tile if min distance to either of lines meets criterion #
+            try:
+                rec = sf.record(shapeNum)
+                if min(dist1)<300 or min(dist2)<300:
+                    tilesKeep.append(rec['Name'])
+            except:
+                pass
+            
+        with open(wd+'tilesKeep.pkl','wb') as f:
+            pickle.dump(tilesKeep,f)
+            
+        self.finishSignal.emit(1)
+        print('Thread Done')
+    
+ 
+
+
+class ChooseLidarWindow(QWidget):
+    def __init__(self, data, rows, columns):
+        QWidget.__init__(self)
+        self.table = QTableWidget(rows, columns, self)
+        tblHeaders = ['Choose Dataset','Year Collected','Dataset Name']
+        for self.column in range(0,columns):
+            for self.row in range(0,rows):
+                item = QTableWidgetItem(str(data.iloc[self.row][self.column]))
+                if self.column == 0:
+                    item.setFlags(Qt.ItemIsUserCheckable |
+                                     Qt.ItemIsEnabled)
+                    item.setCheckState(Qt.Unchecked)
+                self.table.setItem(self.row, self.column, item)
+                
+            header = self.table.horizontalHeader()
+            header.setSectionResizeMode(0,QHeaderView.Stretch)
+            header.setSectionResizeMode(1,QHeaderView.ResizeToContents)
+            header.setSectionResizeMode(2,QHeaderView.ResizeToContents)
+            
+        self.table.setHorizontalHeaderLabels(["Dataset ID","Year Collected","Dataset Name"])
+        self.table.setSelectionBehavior(QTableView.SelectRows)
+
+        self.table.itemClicked.connect(self.dataChoice)
+
+        self.dir = Qlabel('Select the dataset you want to use by checking its box:')
+        self.contBut = QPushButton('Continue >')
+        self.backBut = QPushButton('< Back')
+        
+        self.contBut.clicked.connect(self.downloadCorrectData)
+        self.backBut.clicked.connect(self.GoBack)
+        
+        
+        self.layout = QGridLayout(self)
+        self.layout.addWidget(self.dir,0,0,4,4)
+        self.layout.addWidget(self.table,1,0,4,4)
+        self.layout.addWidget(self.contBut,6,3,1,1)
+        self.layout.addWidget(self.backBut,6,0,1,1)
+        
+        f = open(wd+'CameraLocation.pkl','rb')
+        cameraLocation = pickle.load(f)
+        
+        self.worker = GetCorrectLidarSetThread(cameraLocation[0],cameraLocation[1])
+        self.worker.threadSignal.connect(self.on_threadSignal)
+        
+        self.worker2 = DownloadLidar(cameraLocation[0],cameraLocation[1])
+        self.worker2.threadSignal.connect(self.on_threadSignal2)
+        
+        self.worker3 = CreateLidarPC(cameraLocation[0],cameraLocation[1])
+        
+    def dataChoice(self,item):
+        print(str(item.text())) 
+        
+        num = int(item.text())
+        with open(wd+'chosenLidarID.pkl','wb') as f:
+            pickle.dump(num,f)
+    
+    def downloadCorrectData(self):   
+        lab1 = QLabel('Sorting tiles:')
+        self.pb1 = QProgressBar()
+        
+        self.layout.removeWidget(self.contBut)
+        self.contBut.deleteLater()
+        self.contBut = None
+        self.layout.removeWidget(self.backBut)
+        self.backBut.deleteLater()
+        self.backBut = None
+        
+        self.layout.addWidget(lab1,6,0,1,2)
+        self.layout.addWidget(self.pb1,6,2,1,2)
+ 
+        self.worker.start()
+        self.worker.finishSignal.connect(self.on_closeSignal)                
+
+    def on_threadSignal(self,perDone):
+        self.pb1.setValue(perDone*100)
+        
+    def on_closeSignal(self):
+        lab2 = QLabel('Downloading lidar data near camera:')
+        self.pb2 = QProgressBar()
+        
+        self.layout.addWidget(lab2,7,0,1,2)
+        self.layout.addWidget(self.pb2,7,2,1,2)
+        
+        self.worker2.start()
+        self.worker2.finishSignal.connect(self.on_closeSignal2)
+        
+    def on_threadSignal2(self,perDone):
+        self.pb2.setValue(perDone*100)
+        
+    def on_closeSignal2(self):
+        lab3 = QLabel('Creating data point cloud...')
+        
+        self.layout.addWidget(lab3,8,0,1,2)
+        
+        self.worker3.start()
+        self.worker3.finishSignal.connect(self.on_closeSignal3)
+        
+    def on_closeSignal3(self):
+        labDone = QLabel('Done')
+        self.layout.addWidget(labDone,8,2,1,2)
+        
+        self.label = QLabel('Lidar downloaded! Press continue to pick GCPs:')
+        contBut2 = QPushButton('Continue >')
+        backBut2 = QPushButton('< Back')
+
+        self.layout.addWidget(self.label,9,0,1,2)
+        self.layout.addWidget(contBut2,10,3,1,1)
+        self.layout.addWidget(backBut2,10,0,1,1)
+        
+        contBut2.clicked.connect(self.moveToNext)
+        backBut2.clicked.connect(self.GoBack)
+        
+    def moveToNext(self):
+        self.close()
+        self.nextWindow = PickGCPsWindow()
+        self.nextWindow().show()
+        
+        
+    def GoBack(self):
+        self.close()
+        self.backToOne = ShowImageWindow()    
 
 
 class StartLidarDownload(QThread):
@@ -88,7 +541,7 @@ class StartLidarDownload(QThread):
         # Loop through all datasets to see which capture where the camera can see. Store the datasets that do. #
         appropID = list() # Initiate list of IDs which contain the camera location #
         i = 0
-        for ID in IDs:
+        for ID in IDs[1:30]:
             
             i = i+1
             perDone = i/len(IDs)
@@ -179,7 +632,10 @@ class GetLidarWindow(QWidget):
        self.setWindowTitle('RECALL')
        self.show()
        
-       self.worker = StartLidarDownload(29.856559,-81.265545)
+       f = open(wd+'CameraLocation.pkl','rb')
+       cameraLocation = pickle.load(f)
+       
+       self.worker = StartLidarDownload(cameraLocation[0],cameraLocation[1])
        self.worker.threadSignal.connect(self.on_threadSignal)
        self.worker.finishSignal.connect(self.on_closeSignal)
 
@@ -200,7 +656,7 @@ class GetLidarWindow(QWidget):
          contBut.clicked.connect(self.GoToChooseLidarSet)
          backBut.clicked.connect(self.GoBack)
          
-         self.grd.addWidget(doneInfo,4,1,1,6)
+         self.grd.addWidget(doneInfo,4,0,1,6)
          self.grd.addWidget(contBut,5,4,1,2)
          self.grd.addWidget(backBut,5,0,1,2)
          self.setGeometry(400,100,200,250)
@@ -212,16 +668,10 @@ class GetLidarWindow(QWidget):
          f = open(wd+'lidarTable.pkl','rb')
          lidarTable = pickle.load(f)
          
-         self.view = QTableView()
-         header = self.view.horizontalHeader()
-         header.setSectionResizeMode(QHeaderView.ResizeToContents)
-         self.view.resizeColumnsToContents()
-
+         self.chooseLidarWindow = ChooseLidarWindow(lidarTable,lidarTable.shape[0],lidarTable.shape[1])
+         self.chooseLidarWindow.resize(900,350)
+         self.chooseLidarWindow.show()
          
-         self.model = ChooseLidarWindow(lidarTable)
-         self.view.setModel(self.model)
-         self.view.show()
-
         
      def GoBack(self):
          self.close()
@@ -336,6 +786,52 @@ class OtherCameraLocationInputWindow(QWidget):
            pickle.dump(pthToImagery,f)       
 
 
+
+class DownloadVidThread(QThread):
+    threadSignal = pyqtSignal('PyQt_PyObject')
+    finishSignal = pyqtSignal('PyQt_PyObject')
+
+    def __init__(self):
+        super().__init__()
+        
+    def run(self):
+        
+       print('Thread Started')
+       
+       f = open(wd+'CameraName.pkl','rb')      
+       camToInput = pickle.load(f)
+       
+       vidFile = RECALL.GetVideo(camToInput)
+       
+       with open(wd+'vidFile.pkl','wb') as f:
+           pickle.dump(vidFile,f)
+           
+       self.finishSignal.emit(1)   
+        
+       print('Thread Done')
+
+class DecimateVidThread(QThread):
+    finishSignal = pyqtSignal('PyQt_PyObject')
+
+    def __init__(self):
+        super().__init__()
+        
+    def run(self):
+        
+       print('Thread Started')
+       
+       f = open(wd+'vidFile.pkl','rb')      
+       vidFile = pickle.load(f)
+       
+       # Decimate the video to 20 still-images #       
+       fullVidPth = wd + vidFile           
+       RECALL.DecimateVideo(fullVidPth)
+           
+       self.finishSignal.emit(1)   
+        
+       print('Thread Done')
+
+
 class WebCATLocationWindow(QWidget):
    
    def __init__(self):
@@ -368,19 +864,23 @@ class WebCATLocationWindow(QWidget):
        backBut.clicked.connect(self.GoBack)
        contBut.clicked.connect(self.DownloadVidAndExtractStills)
        
-       grid = QGridLayout()
+       self.grid = QGridLayout()
        
-       grid.addWidget(txt,0,1,1,4)
-       grid.addWidget(opt,1,1,1,4)
-       grid.addWidget(backBut,8,1,1,2)
-       grid.addWidget(contBut,8,3,1,2)
+       self.grid.addWidget(txt,0,1,1,4)
+       self.grid.addWidget(opt,1,1,1,4)
+       self.grid.addWidget(backBut,2,1,1,2)
+       self.grid.addWidget(contBut,2,3,1,2)
 
        
-       self.setLayout(grid)
+       self.setLayout(self.grid)
     
        self.setGeometry(400,100,300,100)
        self.setWindowTitle('RECALL')
        self.show()
+       
+       self.worker = DownloadVidThread()
+
+       self.worker2 = DecimateVidThread()
 
    def getSelected(self,item):
           
@@ -406,23 +906,32 @@ class WebCATLocationWindow(QWidget):
    def GoBack(self):
        self.close()
        self.backToOne = ChooseCameraWindow()
-       
+          
    def DownloadVidAndExtractStills(self):
-       # Download the video #
-       f = open(wd+'CameraName.pkl','rb')
-       camToInput = pickle.load(f)
-       vidFile = RECALL.GetVideo(camToInput)
        
-       # Get the path to the video file #
-       fullVidPth = wd + vidFile   
-        
-       # Decimate the video to 20 still-images #
-       RECALL.DecimateVideo(fullVidPth)
+       lab1 = QLabel('Downloading Video...')
+       self.grid.addWidget(lab1,3,1,1,2)
+       
+       self.worker.start()
+       self.worker.finishSignal.connect(self.on_closeSignal)
+
+   def on_closeSignal(self):
+       
+       labDone = QLabel('Done.')
+       self.grid.addWidget(labDone,3,3,1,1)
+       
+       lab2 = QLabel('Decimating video to images...')
+       self.grid.addWidget(lab2,4,1,1,2)
+       
+       self.worker2.start()
+       self.worker2.finishSignal.connect(self.on_closeSignal2)       
+    
+   def on_closeSignal2(self):
        self.close()
        self.imWindow = ShowImageWindow()
        self.imWindow.show()
-
        
+      
 #       # Deal with Buxton name change #
 #       fname = glob.glob(pickle.load(f)+'*')[0]
 #       fs = os.path.getsize(wd+fname)
