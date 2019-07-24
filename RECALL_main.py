@@ -28,7 +28,8 @@ import matplotlib.image as mpimg
 wd = '/Users/matthewconlin/Documents/Research/WebCAT/'
                        
 
-class PickGCPsWindow(QWidget):
+
+       class PickGCPsWindow(QWidget):
    def __init__(self):
         super().__init__()    
         
@@ -118,7 +119,6 @@ class PickGCPsWindow(QWidget):
        self.grd.addWidget(helpBut,7,0,1,1)
 
 
-       
         
         
         
