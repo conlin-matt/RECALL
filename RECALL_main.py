@@ -24,12 +24,16 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
+import numpy as np
 
 wd = '/Users/matthewconlin/Documents/Research/WebCAT/'
                        
 
+#=============================================================================#
+# Interactive GCP picking module #
+#=============================================================================#
 
-       class PickGCPsWindow(QWidget):
+class PickGCPsWindow(QWidget):
    def __init__(self):
         super().__init__()    
         
@@ -37,9 +41,15 @@ wd = '/Users/matthewconlin/Documents/Research/WebCAT/'
             app = QApplication(sys.argv)
         else:
             app = QApplication.instance()             
-        #self.initUI()
+          
+        # Define variables which will hold the picked GCPs #    
+        self.GCPs_im = np.empty([0,2])
+        self.GCPs_lidar = np.empty([0,3])
+        ####################################################
         
+        plt.ioff()
         self.figure = plt.figure()
+        self.ax = self.figure.add_subplot(111)
         self.canvas = FigureCanvas(self.figure)
         
         frames = glob.glob('frame'+'*')
@@ -58,72 +68,189 @@ wd = '/Users/matthewconlin/Documents/Research/WebCAT/'
         self.goBut.clicked.connect(self.getPoints1)
         
         self.grd = QGridLayout()
-        self.grd.addWidget(self.introLab,0,0,2,4)
-        self.grd.addWidget(self.canvas,2,0,4,4)
-        self.grd.addWidget(self.goLab,7,0,1,1)
         self.grd.addWidget(self.goBut,7,3,1,1)
+        self.grd.addWidget(self.goLab,7,0,1,1)
+        self.grd.addWidget(self.introLab,0,0,1,4)
+        self.grd.addWidget(self.canvas,2,0,4,4)
+
         
-        self.setLayout(self.grd)
-        
+        self.setLayout(self.grd)       
         self.setWindowTitle('RECALL')
         self.show()
 
-        
+
    def getPoints1(self):
        print('In Function')
 
-       while self.grd.count() > 0:
-           item = self.grd.takeAt(0)
-           if not item:
-               continue
-
-           w = item.widget()
-           if w:
-               w.deleteLater()
-
-#       self.grd.removeWidget(self.introLab)
-#       self.introLab.deleteLater()
-#       self.introLab = None
-#       self.grd.removeWidget(self.goLab)
-#       self.goLab.deleteLater()
-#       self.goLab = None
-#       self.grd.removeWidget(self.goBut)
-#       self.goBut.deleteLater()
-#       self.goBut = None
-
+       self.goBut.setParent(None)
+       self.goLab.setParent(None)
+       self.introLab.setParent(None)
        
-       self.dirLab = QLabel('Click on the point in the image:')
+#       self.setWindowTitle(str(len(self.GCPs_lidar))+'/6 GCPs identified')
+             
+       self.dirLab = QLabel('Click on the point in the image:')      
        self.grd.addWidget(self.dirLab,0,0,1,2)
        
-       pt = plt.ginput(show_clicks=True)   
-       print(pt)
+       self.pt = plt.ginput(show_clicks=True)   
+       print(self.pt)
        
        self.afterClick()
        
    def afterClick(self):
        print('In Function')
+       
        self.grd.removeWidget(self.dirLab)
        self.dirLab.deleteLater()
        self.dirLab = None
        
-       savedLab = QLabel('Image coordinate of point saved!')
-       dirLab2 = QLabel('Now, identify the point lidar point cloud (click Help for directions). When done, return here and Continue (to pick more) or Stop (to finish picking).')
-       contBut = QPushButton('Continue')
-       stopBut = QPushButton('Stop')
-       helpBut = QPushButton('Help')
+       self.savedLab = QLabel('Image coordinate of point saved!')
+       self.dirLab2 = QLabel('Now, identify the point in the lidar point cloud (click Help for directions). When done, return here and Continue (to pick more) or Stop (to finish picking).')
+       self.contBut = QPushButton('Continue')
+       self.stopBut = QPushButton('Stop')
+       self.helpBut = QPushButton('Help')
        
-       self.grd.addWidget(savedLab,0,0,1,2)
-       self.grd.addWidget(dirLab2,1,0,1,2)
-       self.grd.addWidget(stopBut,7,2,1,1)
-       self.grd.addWidget(contBut,7,3,1,1)
-       self.grd.addWidget(helpBut,7,0,1,1)
+       self.helpBut.clicked.connect(self.onHelpClick)
+       self.contBut.clicked.connect(self.onContClick)
+       self.stopBut.clicked.connect(self.onStopClick)
+              
+       self.grd.addWidget(self.savedLab,0,0,1,2)
+       self.grd.addWidget(self.dirLab2,1,0,1,2)
+       self.grd.addWidget(self.stopBut,7,2,1,1)
+       self.grd.addWidget(self.contBut,7,3,1,1)
+       self.grd.addWidget(self.helpBut,7,0,1,1)
+       
+#       if len(self.GCPs_lidar)<5:
+#           self.stopBut.setEnabled(False)
+#       else:
+#           self.stopBut.setEnabled(True)
+       
+       f = open(wd+'lidarPC.pkl','rb')
+       self.pc = pickle.load(f)
+       self.v = pptk.viewer(self.pc,self.pc.iloc[:,2])
+       self.v.set(point_size=0.1,theta=-25,phi=0,lookat=[0,0,20],color_map_scale=[-1,10],r=0)
+              
+   def onHelpClick(self):
+       msg = QMessageBox(self)
+       msg.setIcon(msg.Question)
+       msg.setText('The lidar point cloud has been opened in a seperate window. The viewer can be navigated by clicking and dragging (to rotate view) as well as zooming in/out. Try to rotate/zoom the view until it looks as similar to the image as you can. To select a point, first right click anywhere in the viewer. Then, hold Control (Windows) or Command (Mac) and left click on the point to select it. Then return to this program to continue.')
+       msg.setStandardButtons(msg.Ok)
+       msg.show()
+       
+   def onContClick(self):    
+       
+       self.GCPs_im = np.append(self.GCPs_im,self.pt,axis = 0)
+       print(self.GCPs_im)
+
+       p = self.v.get('selected')
+       self.GCPs_lidar = np.vstack((self.GCPs_lidar,self.pc.iloc[p,:]))
+       print(self.GCPs_lidar)
+
+#       self.setWindowTitle(str(len(self.GCPs_lidar))+'/6 GCPs identified')
+
+       self.savedLab.setParent(None)
+       self.dirLab2.setParent(None)
+       self.contBut.setParent(None)
+       self.stopBut.setParent(None)
+       self.helpBut.setParent(None)
+
+       
+       self.savedLab2 = QLabel('Real world coordinates of point saved!')
+       self.dirLab3 = QLabel('Select another point in the image:')
+       
+       self.grd.addWidget(self.savedLab2,0,0,1,2)
+       self.grd.addWidget(self.dirLab3,1,0,1,2)
+
+       self.pt = plt.ginput(show_clicks=True)   
+       print(self.pt)
+       
+       self.afterClick2()
+
+   def afterClick2(self):
+       
+       self.savedLab2.setParent(None)
+       self.dirLab3.setParent(None)
+       
+       self.savedLab = QLabel('Image coordinate of point saved!')
+       self.dirLab2 = QLabel('Now, identify the point in the lidar point cloud (click Help for directions). When done, return here and Continue (to pick more) or Stop (to finish picking).')
+       self.contBut = QPushButton('Continue')
+       self.stopBut = QPushButton('Stop')
+       self.helpBut = QPushButton('Help')
+       
+       self.helpBut.clicked.connect(self.onHelpClick)
+       self.contBut.clicked.connect(self.onContClick)
+       self.stopBut.clicked.connect(self.onStopClick)
+       
+       self.grd.addWidget(self.savedLab,0,0,1,2)
+       self.grd.addWidget(self.dirLab2,1,0,1,2)
+       self.grd.addWidget(self.stopBut,7,2,1,1)
+       self.grd.addWidget(self.contBut,7,3,1,1)
+       self.grd.addWidget(self.helpBut,7,0,1,1)
+       
+#       if len(self.GCPs_lidar)<5:
+#           self.stopBut.setEnabled(False)
+#       else:
+#           self.stopBut.setEnabled(True)
+               
+   def onStopClick(self):
+       
+       self.GCPs_im = np.append(self.GCPs_im,self.pt,axis = 0)
+       print(self.GCPs_im)
+
+       p = self.v.get('selected')
+       self.GCPs_lidar = np.vstack((self.GCPs_lidar,self.pc.iloc[p,:]))
+       print(self.GCPs_lidar)
+
+#       self.setWindowTitle(str(len(self.GCPs_lidar))+'/6 GCPs identified')
 
 
-        
-        
-        
+       self.savedLab.setParent(None)
+       self.dirLab2.setParent(None)
+       self.contBut.setParent(None)
+       self.stopBut.setParent(None)
+       self.helpBut.setParent(None)
+       
+    
+       self.ax.plot(self.GCPs_im[:,0],self.GCPs_im[:,1],'ro')
 
-class CreateLidarPC(QThread):   
+       
+       self.lab = QLabel('Your GCPs are shown on the image below. Are you happy with them? Press Continue to perform the calibration using these GCPs or select Retry to pick again.')
+       self.contBut = QPushButton('Continue')
+       self.retryBut = QPushButton('Retry')
+       
+       self.contBut.clicked.connect(self.GotoCalibration)
+       self.retryBut.clicked.connect(self.Retry)
+       
+       self.grd.addWidget(self.lab,0,0,1,2)
+       self.grd.addWidget(self.retryBut,7,0,1,1)
+       self.grd.addWidget(self.contBut,7,1,1,1)
+       
+
+   def Retry(self):
+       self.v.close()
+       self.close()
+       self.a = PickGCPsWindow()
+       self.a.show()
+       
+   def GotoCalibration(self):
+       
+       with open(wd+'GCPs_im.pkl','wb') as f:
+            pickle.dump(self.GCPs_im,f)
+       with open(wd+'GCPs_lidar.pkl','wb') as f:
+            pickle.dump(self.GCPs_lidar,f)
+
+      
+#=============================================================================#      
+#=============================================================================#
+       
+       
+
+
+
+#=============================================================================#
+# Lidar dataset sear, selection, and download module #
+#=============================================================================#
+           
+class getLidar_FormatChosenSetThread(QThread):   
     
     import pandas as pd 
     
@@ -176,7 +303,7 @@ class CreateLidarPC(QThread):
         print('Thread Done')
         
 
-class DownloadLidar(QThread):
+class getLidar_DownloadChosenSetThread(QThread):
 
     threadSignal = pyqtSignal('PyQt_PyObject')
     finishSignal = pyqtSignal('PyQt_PyObject')
@@ -276,7 +403,7 @@ class DownloadLidar(QThread):
 
 
 
-class GetCorrectLidarSetThread(QThread):
+class getLidar_PrepChosenSetThread(QThread):
 
     threadSignal = pyqtSignal('PyQt_PyObject')
     finishSignal = pyqtSignal('PyQt_PyObject')
@@ -378,7 +505,7 @@ class GetCorrectLidarSetThread(QThread):
  
 
 
-class ChooseLidarWindow(QWidget):
+class getLidar_ChooseLidarSetWindow(QWidget):
     def __init__(self, data, rows, columns):
         QWidget.__init__(self)
         self.table = QTableWidget(rows, columns, self)
@@ -402,7 +529,7 @@ class ChooseLidarWindow(QWidget):
 
         self.table.itemClicked.connect(self.dataChoice)
 
-        self.dir = Qlabel('Select the dataset you want to use by checking its box:')
+        self.dir = QLabel('Select the dataset you want to use by checking its box:')
         self.contBut = QPushButton('Continue >')
         self.backBut = QPushButton('< Back')
         
@@ -411,7 +538,7 @@ class ChooseLidarWindow(QWidget):
         
         
         self.layout = QGridLayout(self)
-        self.layout.addWidget(self.dir,0,0,4,4)
+        self.layout.addWidget(self.dir,0,0,1,1)
         self.layout.addWidget(self.table,1,0,4,4)
         self.layout.addWidget(self.contBut,6,3,1,1)
         self.layout.addWidget(self.backBut,6,0,1,1)
@@ -419,13 +546,13 @@ class ChooseLidarWindow(QWidget):
         f = open(wd+'CameraLocation.pkl','rb')
         cameraLocation = pickle.load(f)
         
-        self.worker = GetCorrectLidarSetThread(cameraLocation[0],cameraLocation[1])
+        self.worker = getLidar_PrepChosenSetThread(cameraLocation[0],cameraLocation[1])
         self.worker.threadSignal.connect(self.on_threadSignal)
         
-        self.worker2 = DownloadLidar(cameraLocation[0],cameraLocation[1])
+        self.worker2 = getLidar_DownloadChosenSetThread(cameraLocation[0],cameraLocation[1])
         self.worker2.threadSignal.connect(self.on_threadSignal2)
         
-        self.worker3 = CreateLidarPC(cameraLocation[0],cameraLocation[1])
+        self.worker3 = getLidar_FormatChosenSetThread(cameraLocation[0],cameraLocation[1])
         
     def dataChoice(self,item):
         print(str(item.text())) 
@@ -501,7 +628,7 @@ class ChooseLidarWindow(QWidget):
         self.backToOne = ShowImageWindow()    
 
 
-class StartLidarDownload(QThread):
+class getLidar_SearchThread(QThread):
 
     threadSignal = pyqtSignal('PyQt_PyObject')
     finishSignal = pyqtSignal('PyQt_PyObject')
@@ -602,7 +729,7 @@ class StartLidarDownload(QThread):
         self.finishSignal.emit(1)
     
 
-class GetLidarWindow(QWidget):    
+class getLidar_StartSearchWindow(QWidget):    
      def __init__(self):
         super().__init__()    
         
@@ -635,7 +762,7 @@ class GetLidarWindow(QWidget):
        f = open(wd+'CameraLocation.pkl','rb')
        cameraLocation = pickle.load(f)
        
-       self.worker = StartLidarDownload(cameraLocation[0],cameraLocation[1])
+       self.worker = getLidar_SearchThread(cameraLocation[0],cameraLocation[1])
        self.worker.threadSignal.connect(self.on_threadSignal)
        self.worker.finishSignal.connect(self.on_closeSignal)
 
@@ -668,9 +795,9 @@ class GetLidarWindow(QWidget):
          f = open(wd+'lidarTable.pkl','rb')
          lidarTable = pickle.load(f)
          
-         self.chooseLidarWindow = ChooseLidarWindow(lidarTable,lidarTable.shape[0],lidarTable.shape[1])
-         self.chooseLidarWindow.resize(900,350)
-         self.chooseLidarWindow.show()
+         self.lw = getLidar_ChooseLidarSetWindow(lidarTable,lidarTable.shape[0],lidarTable.shape[1])
+         self.lw.resize(900,350)
+         self.lw.show()
          
         
      def GoBack(self):
@@ -678,6 +805,10 @@ class GetLidarWindow(QWidget):
          self.backToOne = ChooseCameraWindow()    
 
          
+
+#=============================================================================#
+#=============================================================================#
+
 
 
 class ShowImageWindow(QWidget):
@@ -705,7 +836,7 @@ class ShowImageWindow(QWidget):
        noBut = QPushButton('No')
        yesBut = QPushButton('Yes')
        
-       yesBut.clicked.connect(self.StartLidarDownload)
+       yesBut.clicked.connect(self.getLidar_SearchThread)
        
        grd = QGridLayout()
        grd.addWidget(label,0,0,4,4)
@@ -718,10 +849,10 @@ class ShowImageWindow(QWidget):
        self.setWindowTitle('RECALL')
        self.show()
        
-   def StartLidarDownload(self):
+   def getLidar_SearchThread(self):
        self.close()
-       self.lidar = GetLidarWindow()
-       self.GetLidarWindow.show()
+       self.lidar = getLidar_StartSearchWindow()
+       self.getLidar_StartSearchWindow.show()
         
 
 class OtherCameraLocationInputWindow(QWidget):
@@ -953,29 +1084,46 @@ class ChooseCameraWindow(QWidget):
           
         t = QLabel('Choose camera type:')
         WebCatOpt = QRadioButton('Select WebCAT camera from list')
-        OtherOpt = QRadioButton('Input location of other camera')    
+        OtherOpt = QRadioButton('Input location of other camera')           
+        leftBar1 = QLabel('Get imagery')
+        leftBar2 = QLabel('Get lidar data')
+        leftBar3 = QLabel('Pick GCPs')
+        leftBar4 = QLabel('Calibrate')
          
         WebCatOpt.clicked.connect(self.WebCAT_select)
         OtherOpt.clicked.connect(self.Other_select)
-            
+        
+        
+        leftGroupBox = QGroupBox('Contents:')
         vBox = QVBoxLayout()
+        vBox.addWidget(leftBar1)
+        vBox.addWidget(leftBar2)
+        vBox.addWidget(leftBar3)
+        vBox.addWidget(leftBar4)
+        vBox.addStretch(1)
+        leftGroupBox.setLayout(vBox)
         
-        vBox.addWidget(t)
-        vBox.addWidget(WebCatOpt)
-        vBox.addWidget(OtherOpt)
+        rightGroupBox = QGroupBox()
+        vBox2 = QVBoxLayout()
+        vBox2.addWidget(t)
+        vBox2.addWidget(WebCatOpt)
+        vBox2.addWidget(OtherOpt)
+#        vBox2.addStretch(1)
+        vBox2.setAlignment(Qt.AlignCenter)
+        rightGroupBox.setLayout(vBox2)
         
-        self.setLayout(vBox)
-            
-        self.setGeometry(400,100,300,100)
+        fullLayout = QHBoxLayout()
+        fullLayout.addWidget(leftGroupBox)
+        fullLayout.addWidget(rightGroupBox)
+#        fullLayout.addStretch(1)
+        fullLayout.setAlignment(Qt.AlignBottom)
+        self.setLayout(fullLayout)
+
+
+        self.setGeometry(400,100,300,500)
         self.setWindowTitle('RECALL')
         self.show()
         
-
-    def center(self):
-        qr = self.frameGeometry()
-        cp = QDesktopWidget().availableGeometry().center()
-        qr.moveCenter(cp)
-        self.move(qr.topLeft())
     def WebCAT_select(self):
         self.close()
         self.ww = WebCATLocationWindow()  
@@ -1017,7 +1165,7 @@ class WelcomeWindow(QWidget):
        
         self.setLayout(grd)
         
-        self.setGeometry(400,100,500,250)
+        self.setGeometry(400,100,300,550)
         self.setWindowTitle('RECALL')
         self.show()
          
