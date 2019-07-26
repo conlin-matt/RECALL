@@ -8,7 +8,7 @@ Created on Thu Jun 20 10:16:23 2019
 
 
 from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QPixmap,QIcon,QMouseEvent
+from PyQt5.QtGui import QPixmap,QIcon,QMouseEvent,QFont
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QAbstractTableModel
 import PyQt5.QtGui as gui
 import PyQt5.QtCore as qtCore
@@ -27,7 +27,6 @@ import matplotlib.image as mpimg
 import numpy as np
 
 wd = '/Users/matthewconlin/Documents/Research/WebCAT/'
-                       
 
 #=============================================================================#
 # Interactive GCP picking module #
@@ -508,6 +507,27 @@ class getLidar_PrepChosenSetThread(QThread):
 class getLidar_ChooseLidarSetWindow(QWidget):
     def __init__(self, data, rows, columns):
         QWidget.__init__(self)
+        
+        # Left menu box setup #
+        bf = QFont()
+        bf.setBold(True)
+        leftBar1 = QLabel('• Get imagery')
+        leftBar1.setFont(bf)
+        leftBar2 = QLabel('• Get lidar data')
+        leftBar3 = QLabel('• Pick GCPs')
+        leftBar4 = QLabel('• Calibrate')
+       
+        leftGroupBox = QGroupBox('Contents:')
+        vBox = QVBoxLayout()
+        vBox.addWidget(leftBar1)
+        vBox.addWidget(leftBar2)
+        vBox.addWidget(leftBar3)
+        vBox.addWidget(leftBar4)
+        vBox.addStretch(1)
+        leftGroupBox.setLayout(vBox)  
+        ########################
+        
+        # Right content box setup #
         self.table = QTableWidget(rows, columns, self)
         tblHeaders = ['Choose Dataset','Year Collected','Dataset Name']
         for self.column in range(0,columns):
@@ -526,23 +546,39 @@ class getLidar_ChooseLidarSetWindow(QWidget):
             
         self.table.setHorizontalHeaderLabels(["Dataset ID","Year Collected","Dataset Name"])
         self.table.setSelectionBehavior(QTableView.SelectRows)
-
-        self.table.itemClicked.connect(self.dataChoice)
-
+        
         self.dir = QLabel('Select the dataset you want to use by checking its box:')
         self.contBut = QPushButton('Continue >')
         self.backBut = QPushButton('< Back')
         
-        self.contBut.clicked.connect(self.downloadCorrectData)
-        self.backBut.clicked.connect(self.GoBack)
-        
-        
+        rightGroupBox = QGroupBox()
         self.layout = QGridLayout(self)
         self.layout.addWidget(self.dir,0,0,1,1)
         self.layout.addWidget(self.table,1,0,4,4)
         self.layout.addWidget(self.contBut,6,3,1,1)
         self.layout.addWidget(self.backBut,6,0,1,1)
+        self.layout.setAlignment(Qt.AlignCenter)
+        rightGroupBox.setLayout(self.layout)
+        ##############################
         
+        # Connect widgets to signals #
+        self.table.itemClicked.connect(self.dataChoice)
+        self.contBut.clicked.connect(self.downloadCorrectData)
+        self.backBut.clicked.connect(self.GoBack)
+        ##############################
+        
+         # Full widget layout setup #
+        fullLayout = QHBoxLayout()
+        fullLayout.addWidget(leftGroupBox)
+        fullLayout.addWidget(rightGroupBox)
+        self.setLayout(fullLayout)
+
+        self.setGeometry(400,100,200,300)
+        self.setWindowTitle('RECALL')
+        self.show()
+        ############################
+        
+        # Instantiate worker threads #
         f = open(wd+'CameraLocation.pkl','rb')
         cameraLocation = pickle.load(f)
         
@@ -553,6 +589,7 @@ class getLidar_ChooseLidarSetWindow(QWidget):
         self.worker2.threadSignal.connect(self.on_threadSignal2)
         
         self.worker3 = getLidar_FormatChosenSetThread(cameraLocation[0],cameraLocation[1])
+        ##############################
         
     def dataChoice(self,item):
         print(str(item.text())) 
@@ -741,40 +778,83 @@ class getLidar_StartSearchWindow(QWidget):
         
        
      def initUI(self):
+              
+       # Left menu box setup #
+       bf = QFont()
+       bf.setBold(True)
+       leftBar1 = QLabel('• Get imagery')
+       leftBar1.setFont(bf)
+       leftBar2 = QLabel('• Get lidar data')
+       leftBar3 = QLabel('• Pick GCPs')
+       leftBar4 = QLabel('• Calibrate')
+       
+       leftGroupBox = QGroupBox('Contents:')
+       vBox = QVBoxLayout()
+       vBox.addWidget(leftBar1)
+       vBox.addWidget(leftBar2)
+       vBox.addWidget(leftBar3)
+       vBox.addWidget(leftBar4)
+       vBox.addStretch(1)
+       leftGroupBox.setLayout(vBox)  
+       ########################
+       
+       # Right contents box setup #
        self.pb = QProgressBar()
        but = QPushButton('Start')
        info = QLabel('Press start to find lidar datsets for this camera:')
        self.val = QLabel('0%')
-
-       but.clicked.connect(self.startWorker)
-            
+        
+       rightGroupBox = QGroupBox()
        self.grd = QGridLayout()
        self.grd.addWidget(info,0,0,1,6)
        self.grd.addWidget(but,1,1,1,4)
        self.grd.addWidget(self.val,2,0,1,1)
        self.grd.addWidget(self.pb,2,1,1,5)
+       self.grd.setAlignment(Qt.AlignCenter)
+       rightGroupBox.setLayout(self.grd)
+       ##############################
+       
+       # Assign signals to widgets #
+       but.clicked.connect(self.startWorker)
+       #############################
+      
+       # Full widget layout setup #
+       fullLayout = QHBoxLayout()
+       fullLayout.addWidget(leftGroupBox)
+       fullLayout.addWidget(rightGroupBox)
+       self.setLayout(fullLayout)
 
-       self.setLayout(self.grd)      
-       self.setGeometry(400,100,200,100)
+       self.setGeometry(400,100,200,300)
        self.setWindowTitle('RECALL')
        self.show()
+       ############################
        
+       # Instantiate worker threads #
        f = open(wd+'CameraLocation.pkl','rb')
        cameraLocation = pickle.load(f)
        
        self.worker = getLidar_SearchThread(cameraLocation[0],cameraLocation[1])
        self.worker.threadSignal.connect(self.on_threadSignal)
        self.worker.finishSignal.connect(self.on_closeSignal)
-
+       ##############################
        
      def startWorker(self):
-        self.worker.start()                     
+         '''
+         Function to start getLidar_SearchThread
+         '''
+         self.worker.start()                     
 
      def on_threadSignal(self,perDone):
-        self.pb.setValue(perDone*100)
-        self.val.setText(str(round(perDone*100))+'%')
+         '''
+         Update progress bar value each time getLidar_SearchThread sends a signal (which is every time it finishes looking at a particular dataset)
+         '''
+         self.pb.setValue(perDone*100)
+         self.val.setText(str(round(perDone*100))+'%')
         
      def on_closeSignal(self):
+         '''
+         When sorting of lidar datasets is completed, show that it is done and allow the user to click Continue to choose the dataset they want to use.
+         '''
          doneInfo = QLabel('Lidar datasets found! Press continue to select the dataset you want to use for remote GCP extraction:')
          doneInfo.setWordWrap(True)
          contBut = QPushButton('Continue >')
@@ -786,10 +866,13 @@ class getLidar_StartSearchWindow(QWidget):
          self.grd.addWidget(doneInfo,4,0,1,6)
          self.grd.addWidget(contBut,5,4,1,2)
          self.grd.addWidget(backBut,5,0,1,2)
-         self.setGeometry(400,100,200,250)
-         self.show()
+#         self.setGeometry(400,100,200,250)
+#         self.show()
          
      def GoToChooseLidarSet(self):
+         '''
+         When Continue is pushed, open the table of lidar datasets.
+         '''
          self.close()
          
          f = open(wd+'lidarTable.pkl','rb')
@@ -801,6 +884,9 @@ class getLidar_StartSearchWindow(QWidget):
          
         
      def GoBack(self):
+         '''
+         Go back to camera choice window on Back click.
+         '''
          self.close()
          self.backToOne = ChooseCameraWindow()    
 
@@ -811,9 +897,19 @@ class getLidar_StartSearchWindow(QWidget):
 
 
 
+
+#=============================================================================#
+# Get image module #
+#=============================================================================#
+
 class ShowImageWindow(QWidget):
+    '''
+    Window showing an example image from the downloaded video. Window allows the user to determine weather or not the downloaded video can be used for GCP extraction.
+    If yes, the user can click Continue to move on the the lidar acquisition module. If no, the UI will return the user to camera selection window after they click No.
+    Note: should make this so, if no, the uer can manuall enter a date and time for video download?
+    '''
    
-   def __init__(self):
+    def __init__(self):
         super().__init__()    
         
         if not QApplication.instance():
@@ -821,23 +917,32 @@ class ShowImageWindow(QWidget):
         else:
             app = QApplication.instance()             
         self.initUI()
-        
-   def initUI(self):
+                
+    def initUI(self):
+
        # Get all the frames #
        frames = glob.glob('frame'+'*')
        frame = frames[1]
+       ######################
        
+       # Make a pixmap out of the image #
        label = QLabel()
        pixmap = QPixmap(frame)
        label.setPixmap(pixmap)
-
+       ##################################
+       
+       # Define widgets #
        label.resize(pixmap.width(),pixmap.height())
        txt = QLabel('Is this image clear enough to allow feature identification? Pressing "Yes" will launch the lidar data download process.')
        noBut = QPushButton('No')
        yesBut = QPushButton('Yes')
+       ##################
        
+       # Link widgets with signals #
        yesBut.clicked.connect(self.getLidar_SearchThread)
+       #############################
        
+       # Set the layout of the window #
        grd = QGridLayout()
        grd.addWidget(label,0,0,4,4)
        grd.addWidget(txt,5,0,1,4)
@@ -848,15 +953,24 @@ class ShowImageWindow(QWidget):
        self.setGeometry(400,100,10,10)
        self.setWindowTitle('RECALL')
        self.show()
+       ################################
        
-   def getLidar_SearchThread(self):
+    def getLidar_SearchThread(self):
+       '''
+       Takes user to the lidar acquisition module on Yes click
+       '''
        self.close()
        self.lidar = getLidar_StartSearchWindow()
        self.getLidar_StartSearchWindow.show()
         
 
+
 class OtherCameraLocationInputWindow(QWidget):
-   def __init__(self):
+    '''
+    Window allowing the user to input necessary info on any (non WebCAT) surfcam, such as location and name. Still working on exactly what info is needed,
+    will use an example (Dania Beach?) to help better determine.
+    '''
+    def __init__(self):
         super().__init__()    
         
         if not QApplication.instance():
@@ -865,7 +979,28 @@ class OtherCameraLocationInputWindow(QWidget):
             app = QApplication.instance()             
         self.initUI()
         
-   def initUI(self):
+    def initUI(self):
+       
+       # Left menu box setup #
+       bf = QFont()
+       bf.setBold(True)
+       leftBar1 = QLabel('• Get imagery')
+       leftBar1.setFont(bf)
+       leftBar2 = QLabel('• Get lidar data')
+       leftBar3 = QLabel('• Pick GCPs')
+       leftBar4 = QLabel('• Calibrate')
+       
+       leftGroupBox = QGroupBox('Contents:')
+       vBox = QVBoxLayout()
+       vBox.addWidget(leftBar1)
+       vBox.addWidget(leftBar2)
+       vBox.addWidget(leftBar3)
+       vBox.addWidget(leftBar4)
+       vBox.addStretch(1)
+       leftGroupBox.setLayout(vBox)
+       #######################
+       
+       # Right contents box setup #
        lblDir1 = QLabel('Input the name of this camera:')
        self.bxName = QLineEdit()
        lblDir = QLabel('Input the location (lat/lon) of the camera below:')
@@ -878,9 +1013,7 @@ class OtherCameraLocationInputWindow(QWidget):
        backBut = QPushButton('< Back')
        contBut = QPushButton('Continue >')
        
-       backBut.clicked.connect(self.GoBack)
-       contBut.clicked.connect(self.getInputs)
-       
+       rightGroupBox = QGroupBox()
        grd = QGridLayout()
        grd.addWidget(lblDir1,0,0,1,3)
        grd.addWidget(self.bxName,0,3,1,3)
@@ -893,18 +1026,38 @@ class OtherCameraLocationInputWindow(QWidget):
        grd.addWidget(self.bxPth,5,0,1,4)
        grd.addWidget(backBut,6,0,1,2)
        grd.addWidget(contBut,6,4,1,2)
+       grd.setAlignment(Qt.AlignCenter)
+       rightGroupBox.setLayout(grd)
+       ##############################
        
-       self.setLayout(grd)
+       # Assign signals to widgets #
+       backBut.clicked.connect(self.GoBack)
+       contBut.clicked.connect(self.getInputs)
+       #############################
+
        
-       self.setGeometry(400,100,200,250)
+       # Full widget layout setup #
+       fullLayout = QHBoxLayout()
+       fullLayout.addWidget(leftGroupBox)
+       fullLayout.addWidget(rightGroupBox)
+       self.setLayout(fullLayout)
+
+       self.setGeometry(400,100,200,300)
        self.setWindowTitle('RECALL')
        self.show()
+       ############################
        
-   def GoBack(self):
+    def GoBack(self):
+       '''
+       Go back to camera choice window on Back click
+       '''
        self.close()
        self.backToOne = ChooseCameraWindow()    
        
-   def getInputs(self):
+    def getInputs(self):
+       '''
+       Get user-input information on Continue click
+       '''
        cameraName = self.bxName.text()
        cameraLocation = [float(self.bxLat.text()),float(self.bxLon.text())]
        pthToImagery = self.bxPth.text()
@@ -919,6 +1072,9 @@ class OtherCameraLocationInputWindow(QWidget):
 
 
 class DownloadVidThread(QThread):
+    '''
+    Worker thread to perform WebCAT video download from online. Uses the GetVideo functon from RECALL.
+    '''
     threadSignal = pyqtSignal('PyQt_PyObject')
     finishSignal = pyqtSignal('PyQt_PyObject')
 
@@ -931,8 +1087,14 @@ class DownloadVidThread(QThread):
        
        f = open(wd+'CameraName.pkl','rb')      
        camToInput = pickle.load(f)
-       
+     
        vidFile = RECALL.GetVideo(camToInput)
+       
+       # Deal with Buxton camera name change #
+       fs = os.path.getsize(wd+vidFile) # Get size of video file #  
+       if camToInput == 'buxtoncoastalcam' and fs<1000:
+           vidFile = RECALL.GetVideo('buxtonnorthcam')
+       #######################################
        
        with open(wd+'vidFile.pkl','wb') as f:
            pickle.dump(vidFile,f)
@@ -942,6 +1104,9 @@ class DownloadVidThread(QThread):
        print('Thread Done')
 
 class DecimateVidThread(QThread):
+    ''' 
+    Worker thread to decimate obtained video to 20 still-images. Uses the DecimateVideo function from RECALL.
+    '''
     finishSignal = pyqtSignal('PyQt_PyObject')
 
     def __init__(self):
@@ -964,8 +1129,11 @@ class DecimateVidThread(QThread):
 
 
 class WebCATLocationWindow(QWidget):
+    '''
+    Window allowing the user to choose desired WebCAT camera from dropdown menu.
+    '''
    
-   def __init__(self):
+    def __init__(self):
         super().__init__()    
         
         if not QApplication.instance():
@@ -974,8 +1142,28 @@ class WebCATLocationWindow(QWidget):
             app = QApplication.instance()             
         self.initUI()
         
-   def initUI(self):
-                    
+    def initUI(self):
+       
+       # Left menu box setup #
+       bf = QFont()
+       bf.setBold(True)
+       leftBar1 = QLabel('• Get imagery')
+       leftBar1.setFont(bf)
+       leftBar2 = QLabel('• Get lidar data')
+       leftBar3 = QLabel('• Pick GCPs')
+       leftBar4 = QLabel('• Calibrate')
+       
+       leftGroupBox = QGroupBox('Contents:')
+       vBox = QVBoxLayout()
+       vBox.addWidget(leftBar1)
+       vBox.addWidget(leftBar2)
+       vBox.addWidget(leftBar3)
+       vBox.addWidget(leftBar4)
+       vBox.addStretch(1)
+       leftGroupBox.setLayout(vBox)
+       ###############
+       
+       # Right contents box setup #
        txt = QLabel('Select WebCAT camera:')
        opt = QComboBox()
        opt.addItem('--')
@@ -989,31 +1177,43 @@ class WebCATLocationWindow(QWidget):
        opt.setCurrentIndex(0)
        backBut = QPushButton('< Back')
        contBut = QPushButton('Continue >')
-    
        
+       self.rightGroupBox = QGroupBox()
+       self.grd = QGridLayout()
+       self.grd.addWidget(txt,0,0,1,2)
+       self.grd.addWidget(opt,1,0,1,2)
+       self.grd.addWidget(backBut,2,0,1,1)
+       self.grd.addWidget(contBut,2,1,1,1)
+       self.grd.setAlignment(Qt.AlignCenter)
+       self.rightGroupBox.setLayout(self.grd)
+       ############################
+       
+       # Connect widgets with signals #
        opt.activated.connect(self.getSelected)
        backBut.clicked.connect(self.GoBack)
        contBut.clicked.connect(self.DownloadVidAndExtractStills)
-       
-       self.grid = QGridLayout()
-       
-       self.grid.addWidget(txt,0,1,1,4)
-       self.grid.addWidget(opt,1,1,1,4)
-       self.grid.addWidget(backBut,2,1,1,2)
-       self.grid.addWidget(contBut,2,3,1,2)
+       ################################
 
-       
-       self.setLayout(self.grid)
-    
-       self.setGeometry(400,100,300,100)
+       # Full widget layout setup #
+       fullLayout = QHBoxLayout()
+       fullLayout.addWidget(leftGroupBox)
+       fullLayout.addWidget(self.rightGroupBox)
+       self.setLayout(fullLayout)
+
+       self.setGeometry(400,100,200,250)
        self.setWindowTitle('RECALL')
        self.show()
-       
+       ############################
+        
+       # Instantiate worker threads #
        self.worker = DownloadVidThread()
-
        self.worker2 = DecimateVidThread()
+       ##############################
 
-   def getSelected(self,item):
+    def getSelected(self,item):
+       '''
+       Function gets saved location of WebCAT camera when it is selected from the combobox
+       '''
           
        WebCATdict = {'Placeholder':[0,0],
                     'buxtoncoastalcam':[35.267777,-75.518448],
@@ -1034,46 +1234,50 @@ class WebCATLocationWindow(QWidget):
        with open(wd+'CameraName.pkl','wb') as f:
            pickle.dump(cameraName,f)
    
-   def GoBack(self):
+    def GoBack(self):
+       '''
+       Function goes back to previous window when Back button is clicked
+       '''
        self.close()
        self.backToOne = ChooseCameraWindow()
           
-   def DownloadVidAndExtractStills(self):
-       
+    def DownloadVidAndExtractStills(self):
+       '''
+       Sets a label that video is downloading when Continue is clicked, and starts a worker thread to download the video
+       '''
        lab1 = QLabel('Downloading Video...')
-       self.grid.addWidget(lab1,3,1,1,2)
+       self.grd.addWidget(lab1,3,0,1,1)
        
        self.worker.start()
        self.worker.finishSignal.connect(self.on_closeSignal)
 
-   def on_closeSignal(self):
-       
+    def on_closeSignal(self):
+       '''
+       When download video thread is done, function shows a done label and starts the video decimation worker thread
+       '''
        labDone = QLabel('Done.')
-       self.grid.addWidget(labDone,3,3,1,1)
+       self.grd.addWidget(labDone,3,1,1,1)
        
        lab2 = QLabel('Decimating video to images...')
-       self.grid.addWidget(lab2,4,1,1,2)
+       self.grd.addWidget(lab2,4,0,1,1)
        
        self.worker2.start()
        self.worker2.finishSignal.connect(self.on_closeSignal2)       
     
-   def on_closeSignal2(self):
+    def on_closeSignal2(self):
+       '''
+       When video decimation thread is complete, function shows a Done label and moves to the next window (ShowImageWindow)
+       '''
        self.close()
        self.imWindow = ShowImageWindow()
        self.imWindow.show()
        
-      
-#       # Deal with Buxton name change #
-#       fname = glob.glob(pickle.load(f)+'*')[0]
-#       fs = os.path.getsize(wd+fname)
-#       if fs<1000:
-#           vidPth = RECALL.GetVideo('buxtonnorthcam')
-       
-       # Make sure we are still in the same directory as the video # 
-       #os.chdir(vidPth.rsplit('/',1)[0]) # Go to the directory defined by the path prior to the final backslash in the vidFile string #
-    
+
 
 class ChooseCameraWindow(QWidget):
+    '''
+    Window allowing the user to choose weather they want to calibrate a WebCAT surfcam or some other surfcam. Next steps will depend on this choice.
+    '''
     def __init__(self):
         super().__init__()
         
@@ -1081,18 +1285,15 @@ class ChooseCameraWindow(QWidget):
             app = QApplication(sys.argv)
         else:
             app = QApplication.instance()  
-          
-        t = QLabel('Choose camera type:')
-        WebCatOpt = QRadioButton('Select WebCAT camera from list')
-        OtherOpt = QRadioButton('Input location of other camera')           
-        leftBar1 = QLabel('Get imagery')
-        leftBar2 = QLabel('Get lidar data')
-        leftBar3 = QLabel('Pick GCPs')
-        leftBar4 = QLabel('Calibrate')
-         
-        WebCatOpt.clicked.connect(self.WebCAT_select)
-        OtherOpt.clicked.connect(self.Other_select)
         
+        # Left menu box setup #
+        bf = QFont()
+        bf.setBold(True)
+        leftBar1 = QLabel('• Get imagery')
+        leftBar1.setFont(bf)
+        leftBar2 = QLabel('• Get lidar data')
+        leftBar3 = QLabel('• Pick GCPs')
+        leftBar4 = QLabel('• Calibrate')
         
         leftGroupBox = QGroupBox('Contents:')
         vBox = QVBoxLayout()
@@ -1102,41 +1303,61 @@ class ChooseCameraWindow(QWidget):
         vBox.addWidget(leftBar4)
         vBox.addStretch(1)
         leftGroupBox.setLayout(vBox)
+        ########################
+        
+        # Right contents box setup #
+        t = QLabel('Choose camera type:')
+        WebCatOpt = QRadioButton('Select WebCAT camera from list')
+        OtherOpt = QRadioButton('Input location of other camera')    
         
         rightGroupBox = QGroupBox()
         vBox2 = QVBoxLayout()
         vBox2.addWidget(t)
         vBox2.addWidget(WebCatOpt)
         vBox2.addWidget(OtherOpt)
-#        vBox2.addStretch(1)
         vBox2.setAlignment(Qt.AlignCenter)
         rightGroupBox.setLayout(vBox2)
+        ############################
+         
+        # Connect widgets with signals #
+        WebCatOpt.clicked.connect(self.WebCAT_select)
+        OtherOpt.clicked.connect(self.Other_select)
+        ################################
         
+        # Full widget layout setup #
         fullLayout = QHBoxLayout()
         fullLayout.addWidget(leftGroupBox)
         fullLayout.addWidget(rightGroupBox)
-#        fullLayout.addStretch(1)
-        fullLayout.setAlignment(Qt.AlignBottom)
         self.setLayout(fullLayout)
 
-
-        self.setGeometry(400,100,300,500)
+        self.setGeometry(400,100,200,300)
         self.setWindowTitle('RECALL')
         self.show()
+        ###############################
+     
         
     def WebCAT_select(self):
+        '''
+        If WebCAT camera selected, this funciton will open new window (WebCATLocationWindow) to choose the WebCAT camera
+        '''
         self.close()
-        self.ww = WebCATLocationWindow()  
+        self.ww = ww = WebCATLocationWindow()  
         self.ww.show()
     def Other_select(self):
+        '''
+        If other-type selected, this function will open a new window (OtherCameraLocationInputWindow) to allow input of camera details
+        '''
         self.close()
         self.www = OtherCameraLocationInputWindow()
         self.www.show()
  
 
 class WelcomeWindow(QWidget):
+    ''' 
+    Welcome window with textual information about the tool and a Start button.
+    '''
     
-   def __init__(self):
+    def __init__(self):
         super().__init__()    
         
         if not QApplication.instance():
@@ -1144,7 +1365,7 @@ class WelcomeWindow(QWidget):
         else:
             app = QApplication.instance()             
 
-              
+        # Define widgets #      
         txt = QLabel('Welcome to the Remote Coastal Camera Calibration Tool (RECALL)!')
         txt2 = QLabel('Developed in partnership with the Southeastern Coastal Ocean Observing Regional Association (SECOORA), '
                       +'the United States Geological Survey (USGS), and the National Oceanic and Atmospheric administration (NOAA), this tool allows you to calibrate any coastal camera of  '
@@ -1153,9 +1374,13 @@ class WelcomeWindow(QWidget):
         txt2.setWordWrap(True)
         txt3 = QLabel('Press Continue to start calibrating a camera!')
         contBut = QPushButton('Continue >')
-       
+        ##################
+        
+        # Connect widgets with signals #
         contBut.clicked.connect(self.StartTool)
-       
+        ################################
+        
+        # Create the widget layout #
         grd = QGridLayout()
         
         grd.addWidget(txt,0,0,1,4)
@@ -1165,14 +1390,18 @@ class WelcomeWindow(QWidget):
        
         self.setLayout(grd)
         
-        self.setGeometry(400,100,300,550)
+        self.setGeometry(400,100,200,300)
         self.setWindowTitle('RECALL')
         self.show()
+        #############################
          
-   def StartTool(self):
-        self.close()
-        self.tool = ChooseCameraWindow()
-        self.tool.show()
+    def StartTool(self):
+       '''
+       Moves to the first window of the tool when Start is selected
+       '''
+       self.close()
+       self.tool = ChooseCameraWindow()
+       self.tool.show()
 
 
 
