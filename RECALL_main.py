@@ -28,6 +28,320 @@ import numpy as np
 
 wd = '/Users/matthewconlin/Documents/Research/WebCAT/'
 
+
+#=============================================================================#
+# Calibration module #
+#=============================================================================#
+        
+class calibrate_GetHorizonWindow(QWidget):
+   def __init__(self):
+        super().__init__()    
+        
+        if not QApplication.instance():
+            app = QApplication(sys.argv)
+        else:
+            app = QApplication.instance()             
+                 
+        # Left menu box setup #
+        bf = QFont()
+        bf.setBold(True)
+        leftBar1 = QLabel('• Welcome!')
+        leftBar2 = QLabel('• Get imagery')
+        leftBar3 = QLabel('• Get lidar data')
+        leftBar4 = QLabel('• Pick GCPs')
+        leftBar5 = QLabel('• Calibrate')
+        leftBar5.setFont(bf)
+
+        leftGroupBox = QGroupBox('Contents:')
+        vBox = QVBoxLayout()
+        vBox.addWidget(leftBar1)
+        vBox.addWidget(leftBar2)
+        vBox.addWidget(leftBar3)
+        vBox.addWidget(leftBar4)
+        vBox.addWidget(leftBar5)
+        vBox.addStretch(1)
+        leftGroupBox.setLayout(vBox)
+        ########################  
+
+        # Right contents box setup #
+        plt.ioff()
+        self.figure = plt.figure()
+        self.ax = self.figure.add_subplot(111)
+        self.canvas = FigureCanvas(self.figure)
+        
+        frames = glob.glob('frame'+'*')
+        frame = frames[1]
+        
+        img = mpimg.imread(wd+'/'+frame)
+        imgplot = plt.imshow(img)
+        
+        self.canvas.draw()
+        
+        self.introLab = QLabel('Welcome to the Calibration module! In just a few more steps, you will obtain calibration parameters for this camera. First, click on two points on the horizon. Make sure to click the more-left point first.')
+        self.introLab.setWordWrap(True)
+
+        self.rightGroupBox = QGroupBox()
+        self.grd = QGridLayout()
+        self.grd.addWidget(self.introLab,0,0,1,4)
+        self.grd.addWidget(self.canvas,2,0,4,4)
+        self.rightGroupBox.setLayout(self.grd)
+        ###############################
+        
+        # Full widget layout setup #
+        fullLayout = QGridLayout()
+        fullLayout.addWidget(leftGroupBox,0,0,2,2)
+        fullLayout.addWidget(self.rightGroupBox,0,3,2,4)
+        self.setLayout(fullLayout)
+
+        self.setGeometry(400,100,1000,500)
+        self.setWindowTitle('RECALL')
+        self.show()
+        ############################ 
+        
+
+class calibrate_CalibrateThread1(QThread):   
+        
+    finishSignal1 = pyqtSignal('PyQt_PyObject')
+    finishSignal2 = pyqtSignal('PyQt_PyObject')
+    finishSignal3 = pyqtSignal('PyQt_PyObject')
+
+    def __init__(self,GCPs_im,GCPs_lidar,horizonPts,cameraElev,cameraDir):
+        super().__init__()
+        self.GCPs_im = GCPs_im
+        self.GCPs_lidar = GCPs_lidar
+        self.horizonPts = horizonPts
+        self.cameraElev = cameraElev
+        self.cameraDir = cameraDir
+        
+    def run(self):
+        
+        print('Thread Started')
+        
+        t,k,R = RECALL.calibrate_GetInitialEstimate(self.GCPs_im,self.GCPs_lidar,self.horizonPts,self.cameraElev,self.cameraDir)                   
+        self.finishSignal1.emit(1)    
+        Kopt,Ropt,topt,k1,k2 = RECALL.calibrate_OptimizeEstimate(t,k,R,self.GCPs_im,self.GCPs_lidar)
+        self.finishSignal2.emit(1)    
+        resid = RECALL.calibrate_CheckCalibrationAccuracy(Kopt,Ropt,topt,k1,k2,self.GCPs_im,self.GCPs_lidar)
+        self.finishSignal3.emit(1)    
+           
+        print('Thread Done')
+
+
+class calibrate_FinalInputs(QWidget):
+   def __init__(self):
+        super().__init__()    
+        
+        if not QApplication.instance():
+            app = QApplication(sys.argv)
+        else:
+            app = QApplication.instance()             
+                 
+        # Left menu box setup #
+        bf = QFont()
+        bf.setBold(True)
+        leftBar1 = QLabel('• Welcome!')
+        leftBar2 = QLabel('• Get imagery')
+        leftBar3 = QLabel('• Get lidar data')
+        leftBar4 = QLabel('• Pick GCPs')
+        leftBar5 = QLabel('• Calibrate')
+        leftBar5.setFont(bf)
+
+        leftGroupBox = QGroupBox('Contents:')
+        vBox = QVBoxLayout()
+        vBox.addWidget(leftBar1)
+        vBox.addWidget(leftBar2)
+        vBox.addWidget(leftBar3)
+        vBox.addWidget(leftBar4)
+        vBox.addWidget(leftBar5)
+        vBox.addStretch(1)
+        leftGroupBox.setLayout(vBox)
+        ########################  
+
+        # Right contents box setup #
+        self.lab = QLabel('Just a couple more things:')
+        self.lab1 = QLabel('Input estimate for camera elevation (in meters):')
+        self.elevBx = QLineEdit()
+        self.lab2 = QLabel('In which direction does the camera look?')
+        self.cb = QComboBox()
+        self.cb.addItem('--')
+        self.cb.addItem('Between North and East')
+        self.cb.addItem('Between East and South')
+        self.cb.addItem('Between North and West')
+        self.cb.addItem('Between West and South')
+        self.calibBut = QPushButton('CALIBRATE')
+        
+        self.rightGroupBox = QGroupBox()
+        self.grd = QGridLayout()
+        self.grd.addWidget(self.lab,0,0,1,5)
+        self.grd.addWidget(self.lab1,1,0,1,3)
+        self.grd.addWidget(self.elevBx,1,3,1,2)
+        self.grd.addWidget(self.lab2,2,0,1,3)
+        self.grd.addWidget(self.cb,2,3,1,2)
+        self.grd.addWidget(self.calibBut,3,1,1,2)
+        self.grd.setAlignment(Qt.AlignCenter)
+        self.rightGroupBox.setLayout(self.grd)
+        ###############################
+        
+        # Full widget layout setup #
+        fullLayout = QGridLayout()
+        fullLayout.addWidget(leftGroupBox,0,0,2,2)
+        fullLayout.addWidget(self.rightGroupBox,0,3,2,4)
+        self.setLayout(fullLayout)
+
+        self.setGeometry(400,100,1000,500)
+        self.setWindowTitle('RECALL')
+        self.show()
+        ############################ 
+        
+        # Connect widgets with signals #
+        self.cb.activated.connect(self.getInputs)
+        self.calibBut.clicked.connect(self.calibrate)
+        ################################
+        
+   def getInputs(self,item):
+        dirCodeList = [0,1,2,3,4]
+        self.cameraDir = dirCodeList[item]
+        
+        self.cameraElev = float(self.elevBx.text())
+        
+        f1 = open(wd+'GCPs_im.pkl','rb') 
+        f2 = open(wd+'GCPs_lidar.pkl','rb') 
+        f3 = open(wd+'horizonPts.pkl','rb') 
+        GCPs_im = pickle.load(f1)
+        GCPs_lidar = pickle.load(f2)
+        horizonPts = pickle.load(f3)
+
+        
+        # Instantiate worker thread now that we have all the inputs #
+        self.worker = calibrate_CalibrateThread1(GCPs_im,GCPs_lidar,horizonPts,self.cameraElev,self.cameraDir)
+        #############################################################
+        
+   def calibrate(self):
+        self.lab.setParent(None)
+        self.lab1.setParent(None)
+        self.lab2.setParent(None)
+        self.elevBx.setParent(None)
+        self.cb.setParent(None)
+        self.calibBut.setParent(None)
+        
+        self.firstThreadLab = QLabel('Getting initial estimates:')
+        self.grd.addWidget(self.firstThreadLab,0,0,1,3)
+        
+        self.worker.start()
+        self.worker.finishSignal1.connect(self.on_closeSignal1)  
+        self.worker.finishSignal2.connect(self.on_closeSignal2)  
+        self.worker.finishSignal3.connect(self.on_closeSignal3)  
+   
+   def on_closeSignal1(self):
+        self.firstThreadDoneLab = QLabel('Done.')
+        self.secondThreadLab = QLabel('Optimizing estimates:')
+        self.grd.addWidget(self.firstThreadDoneLab,0,3,1,2)
+        self.grd.addWidget(self.secondThreadLab,1,0,1,3)
+        
+   def on_closeSignal2(self):
+        self.secondThreadDoneLab = QLabel('Done.')
+        self.thirdThreadLab = QLabel('Computing residuals:')
+        self.grd.addWidget(self.secondThreadDoneLab,1,3,1,2)
+        self.grd.addWidget(self.thirdThreadLab,2,0,1,3)
+        
+   def on_closeSignal3(self):
+       self.thirdThreadDoneLab = QLabel('Done.')
+       self.compLab = QLabel('Calibration complete!')
+       self.resBut = QPushButton('Results >')
+       self.grd.addWidget(self.thirdThreadDoneLab,2,3,1,2)
+       self.grd.addWidget(self.compLab,3,0,1,3)
+       self.grd.addWidget(self.resBut,3,3,1,2)
+       
+       self.resBut.clicked.connect(self.on_resClick)
+       
+   def on_resClick(self):
+        self.close
+        self.finalWindow = ShowCalibResultsWindow()
+        self.finalWindow.show()
+        
+
+
+class calibrate_GetHorizonWindow(QWidget):
+   def __init__(self):
+        super().__init__()    
+        
+        if not QApplication.instance():
+            app = QApplication(sys.argv)
+        else:
+            app = QApplication.instance()             
+                 
+        # Left menu box setup #
+        bf = QFont()
+        bf.setBold(True)
+        leftBar1 = QLabel('• Welcome!')
+        leftBar2 = QLabel('• Get imagery')
+        leftBar3 = QLabel('• Get lidar data')
+        leftBar4 = QLabel('• Pick GCPs')
+        leftBar5 = QLabel('• Calibrate')
+        leftBar5.setFont(bf)
+
+        leftGroupBox = QGroupBox('Contents:')
+        vBox = QVBoxLayout()
+        vBox.addWidget(leftBar1)
+        vBox.addWidget(leftBar2)
+        vBox.addWidget(leftBar3)
+        vBox.addWidget(leftBar4)
+        vBox.addWidget(leftBar5)
+        vBox.addStretch(1)
+        leftGroupBox.setLayout(vBox)
+        ########################  
+
+        # Right contents box setup #
+        plt.ioff()
+        self.figure = plt.figure()
+        self.ax = self.figure.add_subplot(111)
+        self.canvas = FigureCanvas(self.figure)
+        
+        frames = glob.glob('frame'+'*')
+        frame = frames[1]
+        
+        img = mpimg.imread(wd+'/'+frame)
+        imgplot = plt.imshow(img)
+        
+        self.canvas.draw()
+        
+        self.introLab = QLabel('Welcome to the Calibration module! In just a few more steps, you will obtain calibration parameters for this camera. First, click on two points on the horizon. Make sure to click the more-left point first.')
+        self.introLab.setWordWrap(True)
+
+        self.rightGroupBox = QGroupBox()
+        self.grd = QGridLayout()
+        self.grd.addWidget(self.introLab,0,0,1,4)
+        self.grd.addWidget(self.canvas,2,0,4,4)
+        self.rightGroupBox.setLayout(self.grd)
+        ###############################
+        
+        # Full widget layout setup #
+        fullLayout = QGridLayout()
+        fullLayout.addWidget(leftGroupBox,0,0,2,2)
+        fullLayout.addWidget(self.rightGroupBox,0,3,2,4)
+        self.setLayout(fullLayout)
+
+        self.setGeometry(400,100,1000,500)
+        self.setWindowTitle('RECALL')
+        self.show()
+        ############################ 
+        
+        # Get the horizon points #
+        self.pt = plt.ginput(2,show_clicks=True)   
+        ##########################
+        
+        self.afterClick()
+    
+   def afterClick(self):
+        with open(wd+'horizonPts.pkl','wb') as f:
+            pickle.dump(self.pt,f)
+            
+        self.close()
+        self.moreInputs = calibrate_FinalInputs()
+        self.moreInputs.show()
+        
+
+
 #=============================================================================#
 # Interactive GCP picking module #
 #=============================================================================#
@@ -46,6 +360,28 @@ class PickGCPsWindow(QWidget):
         self.GCPs_lidar = np.empty([0,3])
         ####################################################
         
+        # Left menu box setup #
+        bf = QFont()
+        bf.setBold(True)
+        leftBar1 = QLabel('• Welcome!')
+        leftBar2 = QLabel('• Get imagery')
+        leftBar3 = QLabel('• Get lidar data')
+        leftBar4 = QLabel('• Pick GCPs')
+        leftBar4.setFont(bf)
+        leftBar5 = QLabel('• Calibrate')
+        
+        leftGroupBox = QGroupBox('Contents:')
+        vBox = QVBoxLayout()
+        vBox.addWidget(leftBar1)
+        vBox.addWidget(leftBar2)
+        vBox.addWidget(leftBar3)
+        vBox.addWidget(leftBar4)
+        vBox.addWidget(leftBar5)
+        vBox.addStretch(1)
+        leftGroupBox.setLayout(vBox)
+        ########################  
+        
+        # Right contents box setup #
         plt.ioff()
         self.figure = plt.figure()
         self.ax = self.figure.add_subplot(111)
@@ -64,18 +400,29 @@ class PickGCPsWindow(QWidget):
         self.goLab = QLabel('Ready to co-locate a point?:')
         self.goBut = QPushButton('Go')
         
-        self.goBut.clicked.connect(self.getPoints1)
-        
+        self.rightGroupBox = QGroupBox()
         self.grd = QGridLayout()
         self.grd.addWidget(self.goBut,7,3,1,1)
         self.grd.addWidget(self.goLab,7,0,1,1)
         self.grd.addWidget(self.introLab,0,0,1,4)
         self.grd.addWidget(self.canvas,2,0,4,4)
+        self.rightGroupBox.setLayout(self.grd)
+        ###############################
 
+        # Connect widgets with signals #
+        self.goBut.clicked.connect(self.getPoints1)
+        ################################
         
-        self.setLayout(self.grd)       
+        # Full widget layout setup #
+        fullLayout = QGridLayout()
+        fullLayout.addWidget(leftGroupBox,0,0,2,2)
+        fullLayout.addWidget(self.rightGroupBox,0,3,2,4)
+        self.setLayout(fullLayout)
+
+        self.setGeometry(400,100,1000,500)
         self.setWindowTitle('RECALL')
         self.show()
+        ############################
 
 
    def getPoints1(self):
@@ -103,7 +450,8 @@ class PickGCPsWindow(QWidget):
        self.dirLab = None
        
        self.savedLab = QLabel('Image coordinate of point saved!')
-       self.dirLab2 = QLabel('Now, identify the point in the lidar point cloud (click Help for directions). When done, return here and Continue (to pick more) or Stop (to finish picking).')
+       self.dirLab2 = QLabel('Now, identify the point in the lidar point cloud (click Help for directions). Then, click Continue (to pick more) or Stop (to finish picking).')
+       self.dirLab2.setWordWrap(True)
        self.contBut = QPushButton('Continue')
        self.stopBut = QPushButton('Stop')
        self.helpBut = QPushButton('Help')
@@ -112,8 +460,8 @@ class PickGCPsWindow(QWidget):
        self.contBut.clicked.connect(self.onContClick)
        self.stopBut.clicked.connect(self.onStopClick)
               
-       self.grd.addWidget(self.savedLab,0,0,1,2)
-       self.grd.addWidget(self.dirLab2,1,0,1,2)
+       self.grd.addWidget(self.savedLab,0,0,1,4)
+       self.grd.addWidget(self.dirLab2,1,0,1,4)
        self.grd.addWidget(self.stopBut,7,2,1,1)
        self.grd.addWidget(self.contBut,7,3,1,1)
        self.grd.addWidget(self.helpBut,7,0,1,1)
@@ -170,7 +518,8 @@ class PickGCPsWindow(QWidget):
        self.dirLab3.setParent(None)
        
        self.savedLab = QLabel('Image coordinate of point saved!')
-       self.dirLab2 = QLabel('Now, identify the point in the lidar point cloud (click Help for directions). When done, return here and Continue (to pick more) or Stop (to finish picking).')
+       self.dirLab2 = QLabel('Now, identify the point in the lidar point cloud (click Help for directions). Then, click Continue (to pick more) or Stop (to finish picking).')
+       self.dirLab2.setWordWrap(True)
        self.contBut = QPushButton('Continue')
        self.stopBut = QPushButton('Stop')
        self.helpBut = QPushButton('Help')
@@ -179,8 +528,8 @@ class PickGCPsWindow(QWidget):
        self.contBut.clicked.connect(self.onContClick)
        self.stopBut.clicked.connect(self.onStopClick)
        
-       self.grd.addWidget(self.savedLab,0,0,1,2)
-       self.grd.addWidget(self.dirLab2,1,0,1,2)
+       self.grd.addWidget(self.savedLab,0,0,1,4)
+       self.grd.addWidget(self.dirLab2,1,0,1,4)
        self.grd.addWidget(self.stopBut,7,2,1,1)
        self.grd.addWidget(self.contBut,7,3,1,1)
        self.grd.addWidget(self.helpBut,7,0,1,1)
@@ -213,13 +562,14 @@ class PickGCPsWindow(QWidget):
 
        
        self.lab = QLabel('Your GCPs are shown on the image below. Are you happy with them? Press Continue to perform the calibration using these GCPs or select Retry to pick again.')
+       self.lab.setWordWrap(True)
        self.contBut = QPushButton('Continue')
        self.retryBut = QPushButton('Retry')
        
        self.contBut.clicked.connect(self.GotoCalibration)
        self.retryBut.clicked.connect(self.Retry)
        
-       self.grd.addWidget(self.lab,0,0,1,2)
+       self.grd.addWidget(self.lab,0,0,1,4)
        self.grd.addWidget(self.retryBut,7,0,1,1)
        self.grd.addWidget(self.contBut,7,1,1,1)
        
@@ -236,8 +586,11 @@ class PickGCPsWindow(QWidget):
             pickle.dump(self.GCPs_im,f)
        with open(wd+'GCPs_lidar.pkl','wb') as f:
             pickle.dump(self.GCPs_lidar,f)
-
-      
+            
+       self.close()
+       self.calibrateWindow = calibrate_GetHorizonWindow()
+       self.calibrateWindow.show()
+    
 #=============================================================================#      
 #=============================================================================#
        
@@ -246,14 +599,11 @@ class PickGCPsWindow(QWidget):
 
 
 #=============================================================================#
-# Lidar dataset sear, selection, and download module #
+# Lidar dataset search, selection, and download module #
 #=============================================================================#
            
 class getLidar_FormatChosenSetThread(QThread):   
-    
-    import pandas as pd 
-    
-#    threadSignal = pyqtSignal('PyQt_PyObject')
+        
     finishSignal = pyqtSignal('PyQt_PyObject')
 
     def __init__(self,cameraLoc_lat,cameraLoc_lon):
@@ -265,35 +615,9 @@ class getLidar_FormatChosenSetThread(QThread):
         
         f = open(wd+'lidarDat.pkl','rb')
         lidarDat = pickle.load(f)
-       
-        # Turn the numpy array into a Pandas data frame #
-        pc = pd.DataFrame({'x':lidarDat[:,0],'y':lidarDat[:,1],'z':lidarDat[:,2]})
-        
-        
-        # Convert eveything to UTM and translate to camera at (0,0) #
-        #pipInstall('utm')
-        import utm
-        import numpy
-        utmCoordsX = list()
-        utmCoordsY = list()
-        for ix,iy in zip(pc['x'],pc['y']):
-            utmCoords1 = utm.from_latlon(iy,ix)
-            utmCoordsX.append( utmCoords1[0] )
-            utmCoordsY.append( utmCoords1[1] )
-        utmCoords = numpy.array([utmCoordsX,utmCoordsY])
-            
-        utmCam = utm.from_latlon(self.cameraLoc_lat,self.cameraLoc_lon)
-            
-        # Translate to camera position #
-        utmCoords[0,:] = utmCoords[0,:]-utmCam[0]
-        utmCoords[1,:] = utmCoords[1,:]-utmCam[1]
-        
-            
-        # Put these new coordinates into the point cloud %
-        pc['x'] = numpy.transpose(utmCoords[0,:])
-        pc['y'] = numpy.transpose(utmCoords[1,:])
 
-            
+        pc = RECALL.getLidar_CreatePC(lidarDat,self.cameraLoc_lat,self.cameraLoc_lon)
+          
         with open(wd+'lidarPC.pkl','wb') as f:
             pickle.dump(pc,f)
             
@@ -313,84 +637,25 @@ class getLidar_DownloadChosenSetThread(QThread):
         self.cameraLoc_lon = cameraLoc_lon
         
     def run(self):
-#        print('Starting Thread')
-#        for ii in range(1,self.i,1):
-#            perDone = ii/self.i            
-#            self.threadSignal.emit(perDone)
-#        print('Thread Done')
-        
-        
         print('Thread Started')
-        import ftplib
-        import numpy
-        import math
-        import json    
-        import pdal
         
         f = open(wd+'tilesKeep.pkl','rb')
         tilesKeep = pickle.load(f)
         
         f = open(wd+'chosenLidarID.pkl','rb')
         IDToDownload = pickle.load(f)
-    
         
-        ftp = ftplib.FTP('ftp.coast.noaa.gov',timeout=1000000)
-        ftp.login('anonymous','anonymous')
-        ftp.cwd('/pub/DigitalCoast/lidar2_z/geoid12b/data/'+str(IDToDownload))
         i = 0
-        lidarDat = numpy.empty([0,3])
+        lidarDat = np.empty([0,3])
         for thisFile in tilesKeep:
             
             i = i+1
             perDone = i/len(tilesKeep)
             self.threadSignal.emit(perDone)
-           
-            # Save the laz file locally - would prefer not to do this, but can't seem to get the pipeline to download directly from the ftp??? #
-            gfile = open('lazfile.laz','wb') # Create the local file #
-            ftp.retrbinary('RETR '+thisFile,gfile.write) # Copy the contents of the file on FTP into the local file #
-            gfile.close() # Close the remote file #
-                
-            # Construct the json PDAL pipeline to read the file and take only points within +-.5 degree x and y of the camera. Read the data in as an array #
-            fullFileName = wd+'lazfile.laz'
-            pipeline=(json.dumps([{'type':'readers.las','filename':fullFileName},{'type':'filters.range','limits':'X['+str(self.cameraLoc_lon-.5)+':'+str(self.cameraLoc_lon+.5)+'],Y['+str(self.cameraLoc_lat-.5)+':'+str(self.cameraLoc_lat+.5)+']'}],sort_keys=False,indent=4))
-                
-            # Go through the pdal steps to use the pipeline
-            r = pdal.Pipeline(pipeline)  
-            r.validate()  
-            r.execute()
-                
-            # Get the arrays of data and format them so we can use them #
-            datArrays = r.arrays
-            datArrays = datArrays[int(0)] # All of the fields are now accessable with the appropriate index #
-              # allDatArrays.append(datArrays) 
             
-            # Extract x,y,z values #
-            lidarX = datArrays['X']
-            lidarY = datArrays['Y']
-            lidarZ = datArrays['Z']
-        
-            # Only take points within 500 m of the camera #
-            R = 6373000 # ~radius of Earth in m #
-            dist = list()
-            for px,py in zip(lidarX,lidarY):
-                dlon = math.radians(abs(px)) - math.radians(abs(self.cameraLoc_lon))
-                dlat = math.radians(abs(py)) - math.radians(abs(self.cameraLoc_lat))
-                a = math.sin(dlat/2)**2 + math.cos(math.radians(abs(py))) * math.cos(math.radians(abs(self.cameraLoc_lat))) * math.sin(dlon/2)**2
-                c = 2*math.atan2(math.sqrt(a),math.sqrt(1-a))
-                dist.append(R*c)
-           
-            lidarXsmall = list()
-            lidarYsmall = list()
-            lidarZsmall = list()    
-            for xi,yi,zi,di in zip(lidarX,lidarY,lidarZ,dist):
-                if di<300:
-                    lidarXsmall.append(xi)
-                    lidarYsmall.append(yi)
-                    lidarZsmall.append(zi)
-            lidarXYZsmall = numpy.vstack((lidarXsmall,lidarYsmall,lidarZsmall))
-            lidarXYZsmall = numpy.transpose(lidarXYZsmall)
+            lidarXYZsmall = RECALL.getLidar_Download(thisFile,IDToDownload,self.cameraLoc_lat,self.cameraLoc_lon,wd)
             
-            lidarDat = numpy.append(lidarDat,lidarXYZsmall,axis=0)
+            lidarDat = np.append(lidarDat,lidarXYZsmall,axis=0)
 
             
         with open(wd+'lidarDat.pkl','wb') as f:
@@ -413,57 +678,13 @@ class getLidar_PrepChosenSetThread(QThread):
         self.cameraLoc_lon = cameraLoc_lon
 
     def run(self):
-#        print('Starting Thread')
-#        for ii in range(1,self.i,1):
-#            perDone = ii/self.i            
-#            self.threadSignal.emit(perDone)
-#        print('Thread Done')
-        
         
         print('Thread Started')
-        import ftplib
-        #pipInstall('pyshp')
-        import shapefile
-        #pipInstall('utm')
-        import utm
-        import numpy
-        import math
-        
+                
         f = open(wd+'chosenLidarID.pkl','rb')
         IDToDownload = pickle.load(f)
-    
+        sf = RECALL.getLidar_GetShapefile(wd,IDToDownload)
         
-        # Establish the location of the camera in UTM coordinates #
-        cameraLoc_UTMx = utm.from_latlon(self.cameraLoc_lat,self.cameraLoc_lon)[0]
-        cameraLoc_UTMy = utm.from_latlon(self.cameraLoc_lat,self.cameraLoc_lon)[1]
-    
-        
-        ftp = ftplib.FTP('ftp.coast.noaa.gov',timeout=1000000)
-        ftp.login('anonymous','anonymous')
-        ftp.cwd('/pub/DigitalCoast/lidar2_z/geoid12b/data/'+str(IDToDownload))
-        files = ftp.nlst()
-        
-        
-        # Now that we have the dataset, we need to search the dataset for tiles which are near the camera. Otherwise,
-        # we will be loading a whole lot of useless data into memory, which takes forever. #
-        
-        # Load the datset shapefile and dbf file from the ftp. These describe the tiles #
-        shpFile = str([s for s in files if "shp" in s])
-        shpFile = shpFile[2:len(shpFile)-2]
-        dbfFile = str([s for s in files if "dbf" in s])
-        dbfFile = dbfFile[2:len(dbfFile)-2]
-        
-        # Write them locally so we can work with them #
-        gfile = open('shapefileCreate.shp','wb') # Create the local file #
-        ftp.retrbinary('RETR '+shpFile,gfile.write)
-        
-        gfile = open('shapefileCreate.dbf','wb') # Create the local file #
-        ftp.retrbinary('RETR '+dbfFile,gfile.write)
-        
-        # Load them into an object using the PyShp library #
-        sf = shapefile.Reader(wd+"shapefileCreate.shp")
-        
-        # Loop through all of the tiles to find the ones close to the camera #
         tilesKeep = list()
         i = 0
         for shapeNum in range(0,len(sf)):
@@ -471,34 +692,17 @@ class getLidar_PrepChosenSetThread(QThread):
             i = i+1
             perDone = i/len(sf)
             self.threadSignal.emit(perDone)
+            
+            out = RECALL.getLidar_SearchTiles(sf,shapeNum,self.cameraLoc_lat,self.cameraLoc_lon)
+            if out:
+                tilesKeep.append(out)
+        
 
-            
-            bx = sf.shape(shapeNum).bbox # Get the bounding box #
-            # Get the bounding box verticies in utm. bl = bottom-left, etc. #
-            bx_bl = utm.from_latlon(bx[1],bx[0]) 
-            bx_br = utm.from_latlon(bx[1],bx[2]) 
-            bx_tr = utm.from_latlon(bx[3],bx[2]) 
-            bx_tl = utm.from_latlon(bx[3],bx[0]) 
-            # Min distance between camera loc and horizontal lines connecting tile verticies #
-            line_minXbb = numpy.array([numpy.linspace(bx_bl[0],bx_br[0],num=1000),numpy.linspace(bx_bl[1],bx_br[1],num=1000)])
-            line_maxXbb = numpy.array([numpy.linspace(bx_tl[0],bx_tr[0],num=1000),numpy.linspace(bx_tl[1],bx_tr[1],num=1000)])
-            dist1 = list()
-            dist2 = list()
-            for ixMin,iyMin,ixMax,iyMax in zip(line_minXbb[0,:],line_minXbb[1,:],line_maxXbb[0,:],line_maxXbb[1,:]):
-                dist1.append(math.sqrt((ixMin-cameraLoc_UTMx)**2 + (iyMin-cameraLoc_UTMy)**2))
-                dist2.append(math.sqrt((ixMax-cameraLoc_UTMx)**2 + (iyMax-cameraLoc_UTMy)**2))
-            # Keep the tile if min distance to either of lines meets criterion #
-            try:
-                rec = sf.record(shapeNum)
-                if min(dist1)<300 or min(dist2)<300:
-                    tilesKeep.append(rec['Name'])
-            except:
-                pass
-            
         with open(wd+'tilesKeep.pkl','wb') as f:
             pickle.dump(tilesKeep,f)
             
         self.finishSignal.emit(1)
+        
         print('Thread Done')
     
  
@@ -511,21 +715,23 @@ class getLidar_ChooseLidarSetWindow(QWidget):
         # Left menu box setup #
         bf = QFont()
         bf.setBold(True)
-        leftBar1 = QLabel('• Get imagery')
-        leftBar1.setFont(bf)
-        leftBar2 = QLabel('• Get lidar data')
-        leftBar3 = QLabel('• Pick GCPs')
-        leftBar4 = QLabel('• Calibrate')
-       
+        leftBar1 = QLabel('• Welcome!')
+        leftBar2 = QLabel('• Get imagery')
+        leftBar3 = QLabel('• Get lidar data')
+        leftBar3.setFont(bf)
+        leftBar4 = QLabel('• Pick GCPs')
+        leftBar5 = QLabel('• Calibrate')
+        
         leftGroupBox = QGroupBox('Contents:')
         vBox = QVBoxLayout()
         vBox.addWidget(leftBar1)
         vBox.addWidget(leftBar2)
         vBox.addWidget(leftBar3)
         vBox.addWidget(leftBar4)
+        vBox.addWidget(leftBar5)
         vBox.addStretch(1)
-        leftGroupBox.setLayout(vBox)  
-        ########################
+        leftGroupBox.setLayout(vBox)
+        ########################    
         
         # Right content box setup #
         self.table = QTableWidget(rows, columns, self)
@@ -568,12 +774,12 @@ class getLidar_ChooseLidarSetWindow(QWidget):
         ##############################
         
          # Full widget layout setup #
-        fullLayout = QHBoxLayout()
-        fullLayout.addWidget(leftGroupBox)
-        fullLayout.addWidget(rightGroupBox)
+        fullLayout = QGridLayout()
+        fullLayout.addWidget(leftGroupBox,0,0,2,2)
+        fullLayout.addWidget(rightGroupBox,0,2,2,6)
         self.setLayout(fullLayout)
 
-        self.setGeometry(400,100,200,300)
+        self.setGeometry(400,100,200,800)
         self.setWindowTitle('RECALL')
         self.show()
         ############################
@@ -676,87 +882,26 @@ class getLidar_SearchThread(QThread):
         self.cameraLoc_lon = cameraLoc_lon
 
     def run(self):
-#        print('Starting Thread')
-#        for ii in range(1,self.i,1):
-#            perDone = ii/self.i            
-#            self.threadSignal.emit(perDone)
-#        print('Thread Done')
-        
         
         print('Thread Started')
-        import ftplib
-        import re
-        # First, pull the numeric IDs from all datasets which exist #
-        ftp = ftplib.FTP('ftp.coast.noaa.gov',timeout=1000000)
-        ftp.login('anonymous','anonymous')
-        ftp.cwd('/pub/DigitalCoast/lidar2_z/geoid12b/data/')
-        IDs = ftp.nlst()
-        # Get rid of spurious IDs which have letters
-        IDsGood = list()
-        for tryThisString in IDs:
-            testResult = re.search('[a-zA-Z]',tryThisString) # Use regular expressions to see if any letters exist in the string #
-            if testResult:
-                pass
-            else:
-                IDsGood.append(tryThisString)
-        IDs = IDsGood
-    
-    
-        # Loop through all datasets to see which capture where the camera can see. Store the datasets that do. #
+        
+        IDs = RECALL.getLidar_GetIDs()
+        
         appropID = list() # Initiate list of IDs which contain the camera location #
         i = 0
-        for ID in IDs[1:30]:
+        for ID in IDs:          
             
             i = i+1
             perDone = i/len(IDs)
-            self.threadSignal.emit(perDone)
+            self.threadSignal.emit(perDone)  
             
-            # Get the bounds of all of the regions in the current set #
-            ftp.cwd('/pub/DigitalCoast/lidar2_z/geoid12b/data/'+str(ID))  
+            tiles = RECALL.getLidar_TryID(ID,self.cameraLoc_lat,self.cameraLoc_lon)
             
-            # Find the minmax csv file which shows the min and max extents of each tile within the current dataset #
-            files = ftp.nlst()
-            fileWant = str([s for s in files if "minmax" in s])
-            
-            if len(fileWant)>2:
-                # Get the file name and save it. We need to get rid of the ' or " in the name. Sometimes this means we need to get rid of the first 2 characters, sometimes the first 3 #
-                if len(fileWant.split()) == 2:
-                    fileWant = '['+fileWant.split()[1]
-                fileWant = fileWant[2:len(fileWant)-2]
-                # Save the file locally #
-                gfile = open('minmax.csv','wb') # Create the local file #
-                ftp.retrbinary('RETR '+fileWant,gfile.write) # Copy the contents of the file on FTP into the local file #
-                gfile.close() # Close the remote file #
-            
-            
-                # See if the location of the camera is contained within any of the tiles in this dataset. If it is, save the ID #
-                tiles = list()
-                with open('minmax.csv') as infile:
-                    next(infile)
-                    for line in infile:
-                        if float(line.split()[1][0:7]) <= self.cameraLoc_lon <= float(line.split()[2][0:7]) and float(line.split()[3][0:7])<= self.cameraLoc_lat <= float(line.split()[4][0:7]):
-                            tiles.append(line)
-        
+            if tiles:
                 if len(tiles)>0:       
                     appropID.append(ID)
         
-        
-        # Get the data tabel on NOAAs website #
-        url = 'https://coast.noaa.gov/htdata/lidar1_z/'
-        html = requests.get(url).content
-        df_list = pd.read_html(html)
-        dataTable = df_list[-1]
-        # Make a list of all IDs and names #   
-        IDlist = dataTable.loc[:,'ID #']
-        nameList = dataTable.loc[:,'Dataset Name']    
-        # Find the indicies in the data table that match the appropriate IDs # 
-        appropIDNums = list(map(int,appropID))  
-        matchingTableRows = [i for i, x in enumerate(IDlist) for j,y in enumerate(appropIDNums) if x==y] # Get indicies of matching IDs in the dataTable
-        # Create a new data frame with data for the appropriate IDs #
-        matchingTable = pd.DataFrame(columns=['ID','Year Collected','Name'])
-        matchingTable.loc[:,'ID'] = IDlist[matchingTableRows]
-        matchingTable.loc[:,'Year Collected'] = dataTable.loc[:,'Year'][matchingTableRows]
-        matchingTable.loc[:,'Name'] = nameList[matchingTableRows]
+        matchingTable = RECALL.getLidar_GetMatchingNames(appropID)
           
         print('Thread Done')   
 
@@ -782,11 +927,12 @@ class getLidar_StartSearchWindow(QWidget):
        # Left menu box setup #
        bf = QFont()
        bf.setBold(True)
-       leftBar1 = QLabel('• Get imagery')
-       leftBar1.setFont(bf)
-       leftBar2 = QLabel('• Get lidar data')
-       leftBar3 = QLabel('• Pick GCPs')
-       leftBar4 = QLabel('• Calibrate')
+       leftBar1 = QLabel('• Welcome!')
+       leftBar2 = QLabel('• Get imagery')
+       leftBar3 = QLabel('• Get lidar data')
+       leftBar3.setFont(bf)
+       leftBar4 = QLabel('• Pick GCPs')
+       leftBar5 = QLabel('• Calibrate')
        
        leftGroupBox = QGroupBox('Contents:')
        vBox = QVBoxLayout()
@@ -794,9 +940,10 @@ class getLidar_StartSearchWindow(QWidget):
        vBox.addWidget(leftBar2)
        vBox.addWidget(leftBar3)
        vBox.addWidget(leftBar4)
+       vBox.addWidget(leftBar5)
        vBox.addStretch(1)
-       leftGroupBox.setLayout(vBox)  
-       ########################
+       leftGroupBox.setLayout(vBox)
+       ########################    
        
        # Right contents box setup #
        self.pb = QProgressBar()
@@ -866,8 +1013,6 @@ class getLidar_StartSearchWindow(QWidget):
          self.grd.addWidget(doneInfo,4,0,1,6)
          self.grd.addWidget(contBut,5,4,1,2)
          self.grd.addWidget(backBut,5,0,1,2)
-#         self.setGeometry(400,100,200,250)
-#         self.show()
          
      def GoToChooseLidarSet(self):
          '''
@@ -890,8 +1035,6 @@ class getLidar_StartSearchWindow(QWidget):
          self.close()
          self.backToOne = ChooseCameraWindow()    
 
-         
-
 #=============================================================================#
 #=============================================================================#
 
@@ -906,7 +1049,7 @@ class ShowImageWindow(QWidget):
     '''
     Window showing an example image from the downloaded video. Window allows the user to determine weather or not the downloaded video can be used for GCP extraction.
     If yes, the user can click Continue to move on the the lidar acquisition module. If no, the UI will return the user to camera selection window after they click No.
-    Note: should make this so, if no, the uer can manuall enter a date and time for video download?
+    Note: should make this so, if no, the uer can manually enter a date and time for video download?
     '''
    
     def __init__(self):
@@ -984,11 +1127,12 @@ class OtherCameraLocationInputWindow(QWidget):
        # Left menu box setup #
        bf = QFont()
        bf.setBold(True)
-       leftBar1 = QLabel('• Get imagery')
-       leftBar1.setFont(bf)
-       leftBar2 = QLabel('• Get lidar data')
-       leftBar3 = QLabel('• Pick GCPs')
-       leftBar4 = QLabel('• Calibrate')
+       leftBar1 = QLabel('• Welcome!')
+       leftBar2 = QLabel('• Get imagery')
+       leftBar2.setFont(bf)
+       leftBar3 = QLabel('• Get lidar data')
+       leftBar4 = QLabel('• Pick GCPs')
+       leftBar5 = QLabel('• Calibrate')
        
        leftGroupBox = QGroupBox('Contents:')
        vBox = QVBoxLayout()
@@ -996,9 +1140,10 @@ class OtherCameraLocationInputWindow(QWidget):
        vBox.addWidget(leftBar2)
        vBox.addWidget(leftBar3)
        vBox.addWidget(leftBar4)
+       vBox.addWidget(leftBar5)
        vBox.addStretch(1)
        leftGroupBox.setLayout(vBox)
-       #######################
+       ########################    
        
        # Right contents box setup #
        lblDir1 = QLabel('Input the name of this camera:')
@@ -1088,12 +1233,12 @@ class DownloadVidThread(QThread):
        f = open(wd+'CameraName.pkl','rb')      
        camToInput = pickle.load(f)
      
-       vidFile = RECALL.GetVideo(camToInput)
+       vidFile = RECALL.getImagery_GetVideo(camToInput)
        
        # Deal with Buxton camera name change #
        fs = os.path.getsize(wd+vidFile) # Get size of video file #  
        if camToInput == 'buxtoncoastalcam' and fs<1000:
-           vidFile = RECALL.GetVideo('buxtonnorthcam')
+           vidFile = RECALL.getImagery_GetVideo('buxtonnorthcam')
        #######################################
        
        with open(wd+'vidFile.pkl','wb') as f:
@@ -1121,7 +1266,7 @@ class DecimateVidThread(QThread):
        
        # Decimate the video to 20 still-images #       
        fullVidPth = wd + vidFile           
-       RECALL.DecimateVideo(fullVidPth)
+       RECALL.getImagery_DecimateVideo(fullVidPth)
            
        self.finishSignal.emit(1)   
         
@@ -1147,21 +1292,23 @@ class WebCATLocationWindow(QWidget):
        # Left menu box setup #
        bf = QFont()
        bf.setBold(True)
-       leftBar1 = QLabel('• Get imagery')
-       leftBar1.setFont(bf)
-       leftBar2 = QLabel('• Get lidar data')
-       leftBar3 = QLabel('• Pick GCPs')
-       leftBar4 = QLabel('• Calibrate')
-       
+       leftBar1 = QLabel('• Welcome!')
+       leftBar2 = QLabel('• Get imagery')
+       leftBar2.setFont(bf)
+       leftBar3 = QLabel('• Get lidar data')
+       leftBar4 = QLabel('• Pick GCPs')
+       leftBar5 = QLabel('• Calibrate')
+        
        leftGroupBox = QGroupBox('Contents:')
        vBox = QVBoxLayout()
        vBox.addWidget(leftBar1)
        vBox.addWidget(leftBar2)
        vBox.addWidget(leftBar3)
        vBox.addWidget(leftBar4)
+       vBox.addWidget(leftBar5)
        vBox.addStretch(1)
        leftGroupBox.setLayout(vBox)
-       ###############
+       ########################    
        
        # Right contents box setup #
        txt = QLabel('Select WebCAT camera:')
@@ -1200,7 +1347,7 @@ class WebCATLocationWindow(QWidget):
        fullLayout.addWidget(self.rightGroupBox)
        self.setLayout(fullLayout)
 
-       self.setGeometry(400,100,200,250)
+       self.setGeometry(400,100,200,300)
        self.setWindowTitle('RECALL')
        self.show()
        ############################
@@ -1289,11 +1436,12 @@ class ChooseCameraWindow(QWidget):
         # Left menu box setup #
         bf = QFont()
         bf.setBold(True)
-        leftBar1 = QLabel('• Get imagery')
-        leftBar1.setFont(bf)
-        leftBar2 = QLabel('• Get lidar data')
-        leftBar3 = QLabel('• Pick GCPs')
-        leftBar4 = QLabel('• Calibrate')
+        leftBar1 = QLabel('• Welcome!')
+        leftBar2 = QLabel('• Get imagery')
+        leftBar2.setFont(bf)
+        leftBar3 = QLabel('• Get lidar data')
+        leftBar4 = QLabel('• Pick GCPs')
+        leftBar5 = QLabel('• Calibrate')
         
         leftGroupBox = QGroupBox('Contents:')
         vBox = QVBoxLayout()
@@ -1301,9 +1449,10 @@ class ChooseCameraWindow(QWidget):
         vBox.addWidget(leftBar2)
         vBox.addWidget(leftBar3)
         vBox.addWidget(leftBar4)
+        vBox.addWidget(leftBar5)
         vBox.addStretch(1)
         leftGroupBox.setLayout(vBox)
-        ########################
+        ########################    
         
         # Right contents box setup #
         t = QLabel('Choose camera type:')
@@ -1363,10 +1512,33 @@ class WelcomeWindow(QWidget):
         if not QApplication.instance():
             app = QApplication(sys.argv)
         else:
-            app = QApplication.instance()             
+            app = QApplication.instance()    
+            
+            
+        # Left menu box setup #
+        bf = QFont()
+        bf.setBold(True)
+        leftBar1 = QLabel('• Welcome!')
+        leftBar1.setFont(bf)
+        leftBar2 = QLabel('• Get imagery')
+        leftBar3 = QLabel('• Get lidar data')
+        leftBar4 = QLabel('• Pick GCPs')
+        leftBar5 = QLabel('• Calibrate')
+        
+        leftGroupBox = QGroupBox('Contents:')
+        vBox = QVBoxLayout()
+        vBox.addWidget(leftBar1)
+        vBox.addWidget(leftBar2)
+        vBox.addWidget(leftBar3)
+        vBox.addWidget(leftBar4)
+        vBox.addWidget(leftBar5)
+        vBox.addStretch(1)
+        leftGroupBox.setLayout(vBox)
+        ########################    
+            
 
-        # Define widgets #      
-        txt = QLabel('Welcome to the Remote Coastal Camera Calibration Tool (RECALL)!')
+        # Right contents box setup #      
+        txt = QLabel('Welcome to the SurFcamera Remote CAlibration Tool (SurfR-CaT)!')
         txt2 = QLabel('Developed in partnership with the Southeastern Coastal Ocean Observing Regional Association (SECOORA), '
                       +'the United States Geological Survey (USGS), and the National Oceanic and Atmospheric administration (NOAA), this tool allows you to calibrate any coastal camera of  '
                       +'known location with accessible video footage. For documentation on the methods employed by the tool, please refer to the GitHub readme (link here). If you have an '
@@ -1374,26 +1546,33 @@ class WelcomeWindow(QWidget):
         txt2.setWordWrap(True)
         txt3 = QLabel('Press Continue to start calibrating a camera!')
         contBut = QPushButton('Continue >')
-        ##################
+        
+        rightGroupBox = QGroupBox()
+        hBox1 = QHBoxLayout()
+        hBox1.addWidget(txt3)
+        hBox1.addWidget(contBut)
+        vBox = QVBoxLayout()
+        vBox.addWidget(txt)
+        vBox.addWidget(txt2)
+        vBox.addLayout(hBox1)
+        #vBox.setAlignment(Qt.AlignCenter)
+        rightGroupBox.setLayout(vBox)
+        ############################
         
         # Connect widgets with signals #
         contBut.clicked.connect(self.StartTool)
         ################################
         
-        # Create the widget layout #
-        grd = QGridLayout()
-        
-        grd.addWidget(txt,0,0,1,4)
-        grd.addWidget(txt2,1,0,4,4)
-        grd.addWidget(txt3,6,0,1,4)
-        grd.addWidget(contBut,7,3,1,2)
-       
-        self.setLayout(grd)
-        
+        # Full widget layout setup #
+        fullLayout = QHBoxLayout()
+        fullLayout.addWidget(leftGroupBox)
+        fullLayout.addWidget(rightGroupBox)
+        self.setLayout(fullLayout)
+
         self.setGeometry(400,100,200,300)
-        self.setWindowTitle('RECALL')
+        self.setWindowTitle('SurFR-CaT')
         self.show()
-        #############################
+        ###############################
          
     def StartTool(self):
        '''
