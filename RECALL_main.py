@@ -25,6 +25,8 @@ from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as Navigatio
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg 
 
 wd = '/Users/matthewconlin/Documents/Research/WebCAT/'
 
@@ -33,15 +35,15 @@ wd = '/Users/matthewconlin/Documents/Research/WebCAT/'
 # Calibration module #
 #=============================================================================#
         
-class calibrate_GetHorizonWindow(QWidget):
+class calibrate_ShowCalibResultsWindow(QWidget):
    def __init__(self):
         super().__init__()    
         
         if not QApplication.instance():
             app = QApplication(sys.argv)
         else:
-            app = QApplication.instance()             
-                 
+            app = QApplication.instance()           
+        
         # Left menu box setup #
         bf = QFont()
         bf.setBold(True)
@@ -49,9 +51,9 @@ class calibrate_GetHorizonWindow(QWidget):
         leftBar2 = QLabel('• Get imagery')
         leftBar3 = QLabel('• Get lidar data')
         leftBar4 = QLabel('• Pick GCPs')
+        leftBar4.setFont(bf)
         leftBar5 = QLabel('• Calibrate')
-        leftBar5.setFont(bf)
-
+        
         leftGroupBox = QGroupBox('Contents:')
         vBox = QVBoxLayout()
         vBox.addWidget(leftBar1)
@@ -62,7 +64,7 @@ class calibrate_GetHorizonWindow(QWidget):
         vBox.addStretch(1)
         leftGroupBox.setLayout(vBox)
         ########################  
-
+        
         # Right contents box setup #
         plt.ioff()
         self.figure = plt.figure()
@@ -75,17 +77,65 @@ class calibrate_GetHorizonWindow(QWidget):
         img = mpimg.imread(wd+'/'+frame)
         imgplot = plt.imshow(img)
         
+        # Plot the GCPs and reprojected positions #
+        f1 = open(wd+'GCPs_im.pkl','rb') 
+        f2 = open(wd+'GCPs_lidar.pkl','rb') 
+        f3 = open(wd+'Kopt.pkl','rb') 
+        f4 = open(wd+'Ropt.pkl','rb') 
+        f5 = open(wd+'topt.pkl','rb') 
+        f6 = open(wd+'k1.pkl','rb') 
+        f7 = open(wd+'k2.pkl','rb') 
+        GCPs_im = pickle.load(f1)
+        GCPs_lidar = pickle.load(f2)
+        Kopt = pickle.load(f3)
+        Ropt = pickle.load(f4)
+        topt = pickle.load(f5)
+        k1 = pickle.load(f6)
+        k2 = pickle.load(f7)
+        
+        # Plot the GCPs as IDd in the image #
+        colormap = plt.cm.jet
+        plt.gca().set_color_cycle([colormap(i) for i in np.linspace(0,.9,len(GCPs_im))])
+        for i in range(0,len(GCPs_im)):
+            Xc = GCPs_im[i,:]
+            plt.plot(Xc[0],Xc[1],'o')
+        
+        # Plot the reprojection positions of the GCPs and the residuals (differences) between identified and reprojected #
+        resid = np.empty([0])
+        colormap = plt.cm.jet
+        for i in range(0,len(GCPs_im)):
+            Xw = np.append(np.array(GCPs_lidar[i,:]),1)
+            Xc = GCPs_im[i,:]
+                
+            uProj,vProj = RECALL.calibrate_GetPointProjection(Kopt,Ropt,topt,k1,k2,Xw,Xc)
+            
+            plt.plot(uProj,vProj,'x')
+            
+            # Compute residual #
+            residV = np.array([Xc[0]-uProj,Xc[1]-vProj]) 
+            resid = np.append(resid,np.linalg.norm(residV))
+            
+            
+        with open(wd+'resid.pkl','wb') as f:
+            pickle.dump(resid,f)
+        
+        
         self.canvas.draw()
         
-        self.introLab = QLabel('Welcome to the Calibration module! In just a few more steps, you will obtain calibration parameters for this camera. First, click on two points on the horizon. Make sure to click the more-left point first.')
+        self.introLab = QLabel('The reprojection of each picked GCP based on the calibration is shown below.')
         self.introLab.setWordWrap(True)
-
+        self.goLab = QLabel('Note: The Xs should align with the Os if the calibration was accurate.')
+        self.goBut = QPushButton('Go')
+        
         self.rightGroupBox = QGroupBox()
         self.grd = QGridLayout()
+        self.grd.addWidget(self.goBut,7,3,1,1)
+        self.grd.addWidget(self.goLab,7,0,1,1)
         self.grd.addWidget(self.introLab,0,0,1,4)
         self.grd.addWidget(self.canvas,2,0,4,4)
         self.rightGroupBox.setLayout(self.grd)
         ###############################
+
         
         # Full widget layout setup #
         fullLayout = QGridLayout()
@@ -96,14 +146,14 @@ class calibrate_GetHorizonWindow(QWidget):
         self.setGeometry(400,100,1000,500)
         self.setWindowTitle('RECALL')
         self.show()
-        ############################ 
+        ############################
         
+
 
 class calibrate_CalibrateThread1(QThread):   
         
     finishSignal1 = pyqtSignal('PyQt_PyObject')
     finishSignal2 = pyqtSignal('PyQt_PyObject')
-    finishSignal3 = pyqtSignal('PyQt_PyObject')
 
     def __init__(self,GCPs_im,GCPs_lidar,horizonPts,cameraElev,cameraDir):
         super().__init__()
@@ -121,9 +171,18 @@ class calibrate_CalibrateThread1(QThread):
         self.finishSignal1.emit(1)    
         Kopt,Ropt,topt,k1,k2 = RECALL.calibrate_OptimizeEstimate(t,k,R,self.GCPs_im,self.GCPs_lidar)
         self.finishSignal2.emit(1)    
-        resid = RECALL.calibrate_CheckCalibrationAccuracy(Kopt,Ropt,topt,k1,k2,self.GCPs_im,self.GCPs_lidar)
-        self.finishSignal3.emit(1)    
-           
+        
+        with open(wd+'Kopt.pkl','wb') as f:
+            pickle.dump(Kopt,f)
+        with open(wd+'Ropt.pkl','wb') as f:
+            pickle.dump(Ropt,f)  
+        with open(wd+'topt.pkl','wb') as f:
+            pickle.dump(topt,f)              
+        with open(wd+'k1.pkl','wb') as f:
+            pickle.dump(k1,f)             
+        with open(wd+'k2.pkl','wb') as f:
+            pickle.dump(k2,f)          
+        
         print('Thread Done')
 
 
@@ -200,18 +259,16 @@ class calibrate_FinalInputs(QWidget):
         
    def getInputs(self,item):
         dirCodeList = [0,1,2,3,4]
-        self.cameraDir = dirCodeList[item]
-        
+        self.cameraDir = dirCodeList[item]      
         self.cameraElev = float(self.elevBx.text())
-        
+
         f1 = open(wd+'GCPs_im.pkl','rb') 
         f2 = open(wd+'GCPs_lidar.pkl','rb') 
         f3 = open(wd+'horizonPts.pkl','rb') 
         GCPs_im = pickle.load(f1)
         GCPs_lidar = pickle.load(f2)
         horizonPts = pickle.load(f3)
-
-        
+       
         # Instantiate worker thread now that we have all the inputs #
         self.worker = calibrate_CalibrateThread1(GCPs_im,GCPs_lidar,horizonPts,self.cameraElev,self.cameraDir)
         #############################################################
@@ -240,23 +297,17 @@ class calibrate_FinalInputs(QWidget):
         
    def on_closeSignal2(self):
         self.secondThreadDoneLab = QLabel('Done.')
-        self.thirdThreadLab = QLabel('Computing residuals:')
+        self.compLab = QLabel('Calibration complete!')
+        self.resBut = QPushButton('Results >')
         self.grd.addWidget(self.secondThreadDoneLab,1,3,1,2)
-        self.grd.addWidget(self.thirdThreadLab,2,0,1,3)
-        
-   def on_closeSignal3(self):
-       self.thirdThreadDoneLab = QLabel('Done.')
-       self.compLab = QLabel('Calibration complete!')
-       self.resBut = QPushButton('Results >')
-       self.grd.addWidget(self.thirdThreadDoneLab,2,3,1,2)
-       self.grd.addWidget(self.compLab,3,0,1,3)
-       self.grd.addWidget(self.resBut,3,3,1,2)
-       
-       self.resBut.clicked.connect(self.on_resClick)
+        self.grd.addWidget(self.compLab,2,0,1,3)
+        self.grd.addWidget(self.resBut,2,3,1,2)
+               
+        self.resBut.clicked.connect(self.on_resClick)
        
    def on_resClick(self):
-        self.close
-        self.finalWindow = ShowCalibResultsWindow()
+        self.close()
+        self.finalWindow = calibrate_ShowCalibResultsWindow()
         self.finalWindow.show()
         
 
@@ -327,7 +378,7 @@ class calibrate_GetHorizonWindow(QWidget):
         ############################ 
         
         # Get the horizon points #
-        self.pt = plt.ginput(2,show_clicks=True)   
+        self.pt = plt.ginput(n=2,show_clicks=True)   
         ##########################
         
         self.afterClick()
@@ -388,7 +439,7 @@ class PickGCPsWindow(QWidget):
         self.canvas = FigureCanvas(self.figure)
         
         frames = glob.glob('frame'+'*')
-        frame = frames[1]
+        frame = frames[0]
         
         img = mpimg.imread(wd+'/'+frame)
         imgplot = plt.imshow(img)
@@ -556,6 +607,7 @@ class PickGCPsWindow(QWidget):
        self.contBut.setParent(None)
        self.stopBut.setParent(None)
        self.helpBut.setParent(None)
+       self.v.close()
        
     
        self.ax.plot(self.GCPs_im[:,0],self.GCPs_im[:,1],'ro')
@@ -582,12 +634,13 @@ class PickGCPsWindow(QWidget):
        
    def GotoCalibration(self):
        
+       self.close()
+
        with open(wd+'GCPs_im.pkl','wb') as f:
             pickle.dump(self.GCPs_im,f)
        with open(wd+'GCPs_lidar.pkl','wb') as f:
             pickle.dump(self.GCPs_lidar,f)
             
-       self.close()
        self.calibrateWindow = calibrate_GetHorizonWindow()
        self.calibrateWindow.show()
     
@@ -838,12 +891,33 @@ class getLidar_ChooseLidarSetWindow(QWidget):
         self.pb2.setValue(perDone*100)
         
     def on_closeSignal2(self):
-        lab3 = QLabel('Creating data point cloud...')
+        f = open(wd+'lidarDat.pkl','rb')
+        ld = pickle.load(f)
+        if len(ld>0):
         
-        self.layout.addWidget(lab3,8,0,1,2)
+            lab3 = QLabel('Creating data point cloud...')
         
-        self.worker3.start()
-        self.worker3.finishSignal.connect(self.on_closeSignal3)
+            self.layout.addWidget(lab3,8,0,1,2)
+        
+            self.worker3.start()
+            self.worker3.finishSignal.connect(self.on_closeSignal3)
+        else: 
+            msg = QMessageBox(self)
+            msg.setIcon(msg.Warning)
+            msg.setText('Oops, no lidar observations from this dataset were found near the camera. This could indicate that this region was skipped during data collection. Please press OK to choose a different dataset. ')
+            msg.setStandardButtons(msg.Ok)
+            msg.show()
+            msg.buttonClicked.connect(self.chooseOtherSet)
+            
+    def chooseOtherSet(self):
+        self.close()
+        
+        f = open(wd+'lidarTable.pkl','rb')
+        lidarTable = pickle.load(f)
+         
+        self.lw = getLidar_ChooseLidarSetWindow(lidarTable,lidarTable.shape[0],lidarTable.shape[1])
+        self.lw.show()
+         
         
     def on_closeSignal3(self):
         labDone = QLabel('Done')
@@ -971,7 +1045,7 @@ class getLidar_StartSearchWindow(QWidget):
        fullLayout.addWidget(rightGroupBox)
        self.setLayout(fullLayout)
 
-       self.setGeometry(400,100,200,300)
+       self.setGeometry(400,100,300,300)
        self.setWindowTitle('RECALL')
        self.show()
        ############################
@@ -1065,7 +1139,7 @@ class ShowImageWindow(QWidget):
 
        # Get all the frames #
        frames = glob.glob('frame'+'*')
-       frame = frames[1]
+       frame = frames[0]
        ######################
        
        # Make a pixmap out of the image #

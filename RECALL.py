@@ -22,7 +22,7 @@ import cv2
 #============================================================================#
 # Get WebCAT video #
 #============================================================================#
-def getImagery_GetVideo(camToInput,year=2018,month=6,day=3,hour=1000):
+def getImagery_GetVideo(camToInput,year=2019,month=6,day=3,hour=1000):
     
     """
     Function to download a video clip from a specified WebCAT camera to local directory. The desired year, month, day, and time can be given, 
@@ -231,18 +231,28 @@ def getLidar_SearchTiles(sf,shapeNum,cameraLoc_lat,cameraLoc_lon):
     # Min distance between camera loc and horizontal lines connecting tile verticies #
     line_minXbb = numpy.array([numpy.linspace(bx_bl[0],bx_br[0],num=1000),numpy.linspace(bx_bl[1],bx_br[1],num=1000)])
     line_maxXbb = numpy.array([numpy.linspace(bx_tl[0],bx_tr[0],num=1000),numpy.linspace(bx_tl[1],bx_tr[1],num=1000)])
+    
+    # Distance from camera to midpoint of tile #
+    meanX = numpy.mean(numpy.array([line_minXbb[0,:],line_maxXbb[0,:]]))
+    meanY = numpy.mean(numpy.array([line_minXbb[1,:],line_maxXbb[1,:]]))
+    dist = math.sqrt((meanX-cameraLoc_UTMx)**2 + (meanY-cameraLoc_UTMy)**2)
+    
+    # Distance from camera to edges of tile #
     dist1 = list()
     dist2 = list()
     for ixMin,iyMin,ixMax,iyMax in zip(line_minXbb[0,:],line_minXbb[1,:],line_maxXbb[0,:],line_maxXbb[1,:]):
         dist1.append(math.sqrt((ixMin-cameraLoc_UTMx)**2 + (iyMin-cameraLoc_UTMy)**2))
         dist2.append(math.sqrt((ixMax-cameraLoc_UTMx)**2 + (iyMax-cameraLoc_UTMy)**2))
-    # Keep the tile if min distance to either of lines meets criterion #
+    
+    # If either distance is <350 m, keep the tile. This ensures close tiles are kept and the tile containing the camera is kept. #
     try:
         rec = sf.record(shapeNum)
-        if min(dist1)<300 or min(dist2)<300:
+        if min(dist1)<600 or min(dist2)<600:
             return rec['Name']
     except:
         pass
+    
+    
 
 
 def getLidar_Download(thisFile,IDToDownload,cameraLoc_lat,cameraLoc_lon,wd):
@@ -343,6 +353,12 @@ def getLidar_CreatePC(lidarDat,cameraLoc_lat,cameraLoc_lon):
 def calibrate_GetInitialEstimate(GCPs_im,GCPs_lidar,horizonPts,cameraElev,cameraDir):
     import numpy as np
     import math
+    from scipy.optimize import least_squares
+    import os
+    import glob
+    import matplotlib.pyplot as plt
+    import matplotlib.image as mpimg
+
 
     ### Get initial parameter estimation using Direct Linear Transform, as implemented in the online lecture ###
 
@@ -352,7 +368,7 @@ def calibrate_GetInitialEstimate(GCPs_im,GCPs_lidar,horizonPts,cameraElev,camera
     startRow = -3
     for i in range(0,6):
         startRow = startRow+3
-    
+        
         # Lidar GCP coordinates #
         Xx = GCPs_lidar[i,0]
         Xy = GCPs_lidar[i,1]
@@ -361,44 +377,43 @@ def calibrate_GetInitialEstimate(GCPs_im,GCPs_lidar,horizonPts,cameraElev,camera
         x = GCPs_im[i,0]
         y = GCPs_im[i,1]
         camVec = [-x,-y,-1]
-    
+        
         # Put the coordinates in the correct places in the M matrix #
         for subi in range(0,3):
             zeroSpace = subi*4
-        
+            
             M[startRow+subi,0+zeroSpace] = Xx
             M[startRow+subi,1+zeroSpace] = Xy
             M[startRow+subi,2+zeroSpace] = Xz
             M[startRow+subi,3+zeroSpace] = 1
-        
+            
             M[startRow+subi,12+(i*4)] = camVec[subi]
-
 
     # Make the norm of the M matrix = 1 by dividing it by its current norm #
     M = M/np.linalg.norm(M)        
-
+    
     # Create the MTM matrix #
     MTM = np.transpose(M) @ M
-
+    
     # SVD on MTM and take the eigenvector with the smallest eigenvalue as the solution for v #
     u,s,v = np.linalg.svd(MTM)
     vStar = v[:,len(v)-1]
-
+    
     # Create P as the first 12 elements of the eigenvector, in a 3x4 shape (?????? is this correct ????????) #
     P = np.vstack((np.transpose(vStar[0:4]),np.transpose(vStar[4:8]),np.transpose(vStar[8:12])))
 
 
 
     ### Factor P into K by using RQ factorization ###
-
+    
     # Get A and a. I think this is correct????? #
     A = P[:,0:3]
     a = P[:,3]
-
+    
     A1 = A[0,:]
     A2 = A[1,:]
     A3 = A[2,:]
-
+    
     # Solve the third row #
     f = np.linalg.norm(A3)
     R3 = (1/f)*A3
@@ -423,10 +438,10 @@ def calibrate_GetInitialEstimate(GCPs_im,GCPs_lidar,horizonPts,cameraElev,camera
     t = np.dot(np.linalg.inv(k),P)[:,3]
 
 
-    # Define t better using input for elevation estimate #
+    # Define t better by asking for user input for elevation estimate #
     t = [0,0,float(cameraElev)]
 
-    ### Make R better using the horizon ###
+    # Make R better using the horizon #
     xa = horizonPts[0][0]
     ya = horizonPts[0][1]
     xb = horizonPts[1][0]
@@ -441,18 +456,19 @@ def calibrate_GetInitialEstimate(GCPs_im,GCPs_lidar,horizonPts,cameraElev,camera
     beta = np.arccos((t[2]+(.42*(D**2/Rt)))/D)
     xi = beta-Cc
 
-    # Now compute the three camera orientation angles from the two horizon angles #
+# Now compute the three camera orientation angles from the two horizon angles #
     phi = -np.arcsin(math.sin(xi)*math.sin(psi))
     omega = np.arccos(math.cos(xi)/(math.sqrt(math.cos(psi)+(math.cos(xi)**2*math.sin(psi)))))
-    if cameraDir == 1:
+    kk = cameraDir
+    if kk == 1:
         kappa = -math.pi/4
-    elif cameraDir == 2:
+    elif kk == 2:
         kappa = -math.pi*3/4
-    elif cameraDir == 3:
+    elif kk == 3:
         kappa = math.pi/4
     else:
         kappa = math.pi*3/4
-
+    
     # Put the angles into the Holland convention -- not sure which correspond to which. #
     tau = omega
     sigma = phi
@@ -474,7 +490,8 @@ def calibrate_GetInitialEstimate(GCPs_im,GCPs_lidar,horizonPts,cameraElev,camera
     return t,k,R
 
 
-def calcResid_withDistortion(toOptVec,GCPs_im,GCPs_lidar):
+
+def calcResid_withDistortion(toOptVec,GCPs_lidar,GCPs_im):
     import numpy as np
     resid = 0
     for i in range(0,len(GCPs_im)): 
@@ -485,7 +502,7 @@ def calcResid_withDistortion(toOptVec,GCPs_im,GCPs_lidar):
         Xc = GCPs_im[i,:]
         
         # Project world to image with current guess of calibration params #
-        t = toOptVec[18:21]
+        t = [toOptVec[18],toOptVec[19],toOptVec[20]]
         Pi = np.dot(ki,np.c_[Ri,t])
         uv = np.dot(Pi,Xw)
         u = uv[0]/uv[2]
@@ -516,7 +533,6 @@ def calcResid_withDistortion(toOptVec,GCPs_im,GCPs_lidar):
     return residToReturn
 
 
-
 def calibrate_OptimizeEstimate(t,k,R,GCPs_im,GCPs_lidar):
     import numpy as np
     from scipy.optimize import least_squares
@@ -524,7 +540,7 @@ def calibrate_OptimizeEstimate(t,k,R,GCPs_im,GCPs_lidar):
     toOptVec = np.array([k[0,0],k[0,1],k[0,2],k[1,0],k[1,1],k[1,2],k[2,0],k[2,1],k[2,2],R[0,0],R[0,1],R[0,2],R[1,0],R[1,1],R[1,2],R[2,0],R[2,1],R[2,2],t[0],t[1],t[2],0,0]) # Need to put everything into a vector for the function to work #
 
     # Optimize the parameters using the Levenberg-Marquardt algorithm #
-    out = least_squares(calcResid_withDistortion,toOptVec,args=(GCPs_im,GCPs_lidar),method='lm',max_nfev=100000,xtol=None)
+    out = least_squares(calcResid_withDistortion,toOptVec,args=(GCPs_lidar,GCPs_im),method='lm',max_nfev=100000,xtol=None)
     optVec = out['x']
 
     # Build optimized k, R, and t and distortion coeffs #
@@ -537,43 +553,32 @@ def calibrate_OptimizeEstimate(t,k,R,GCPs_im,GCPs_lidar):
     return Kopt,Ropt,topt,k1,k2
 
 
-def calibrate_CheckCalibrationAccuracy(Kopt,Ropt,topt,k1,k2,GCPs_im,GCPs_lidar):
+
+def calibrate_GetPointProjection(Kopt,Ropt,topt,k1,k2,Xw,Xc):
     import numpy as np
-    import matplotlib.pyplot as plt
-    import matplotlib.image as mpimg 
-    
-    resid = np.empty([0])
-    for i in range(0,len(GCPs_im)):
-            Xw = np.append(np.array(GCPs_lidar[i,:]),1)
-            Xc = GCPs_im[i,:]
-    
-#            plt.plot(Xc[0],Xc[1],'o',color=cVec[i],markersize=3)
-            
-            # Project world to image #
-            Ptest = np.dot(Kopt,np.c_[Ropt,topt])
-            uv = np.dot(Ptest,Xw)
-            uProj = uv[0]/uv[2]
-            vProj = uv[1]/uv[2]
-            
-            # Distort #
-            # Rigid transformation from world coords to camera coords #
-            camCoords = np.dot(Ropt,Xw[0:3])+topt
-            # Perspective transformation from 3d camera coords to ideal image coords #
-            x = Kopt[1,1]*(camCoords[0]/camCoords[2])
-            y = Kopt[1,1]*(camCoords[1]/camCoords[2])
-            dx = .2
-            dy = .2
-            uProj = x/dx
-            vProj = y/dy
-            uProjD = uProj+((uProj-Kopt[0,2])*((k1*(x**2+y**2))+(k2*(x**2+y**2)**2)))
-            vProjD = vProj+((vProj-Kopt[1,2])*((k1*(x**2+y**2))+(k2*(x**2+y**2)**2)))
-            
-#            plt.plot(uProjD,vProjD,'+',color=cVec[i],markersize=5)
-            
-            # Compute residual #
-            residV = np.array([Xc[0]-uProjD,Xc[1]-vProjD]) 
-            resid = np.append(resid,np.linalg.norm(residV))
-            
-    return resid
+ 
+    # Project world to image #
+    Ptest = np.dot(Kopt,np.c_[Ropt,topt])
+    uv = np.dot(Ptest,Xw)
+    uProj = uv[0]/uv[2]
+    vProj = uv[1]/uv[2]
+        
+    # Distort #
+    # Rigid transformation from world coords to camera coords #
+    camCoords = np.dot(Ropt,Xw[0:3])+topt
+    # Perspective transformation from 3d camera coords to ideal image coords #
+    x = Kopt[1,1]*(camCoords[0]/camCoords[2])
+    y = Kopt[1,1]*(camCoords[1]/camCoords[2])
+    dx = .2
+    dy = .2
+    uProj = x/dx
+    vProj = y/dy
+    uProjD = uProj+((uProj-Kopt[0,2])*((k1*(x**2+y**2))+(k2*(x**2+y**2)**2)))
+    vProjD = vProj+((vProj-Kopt[1,2])*((k1*(x**2+y**2))+(k2*(x**2+y**2)**2)))
+        
+    return uProjD,vProjD
+
+
+
 
 
