@@ -13,7 +13,7 @@ clips on the website can help determine the desired date/time to use.
 
 """
 
-def RECALL_GetVideo(cam,year=2018,month=6,day=3,hour=1000):
+def RECALL_GetVideo(cam,year=2019,month=6,day=3,hour=1000):
 
     ### Import packages ###
     import requests
@@ -77,7 +77,7 @@ def RECALL_GetVideo(cam,year=2018,month=6,day=3,hour=1000):
 
 
 
-vidPth = RECALL_GetVideo('miami40th')       
+vidPth = RECALL_GetVideo('follypiernorth')       
         
         
         

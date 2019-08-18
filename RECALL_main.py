@@ -27,6 +27,7 @@ import matplotlib.image as mpimg
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg 
+import cv2
 
 wd = '/Users/matthewconlin/Documents/Research/WebCAT/'
 
@@ -144,7 +145,7 @@ class calibrate_ShowCalibResultsWindow(QWidget):
         self.setLayout(fullLayout)
 
         self.setGeometry(400,100,1000,500)
-        self.setWindowTitle('RECALL')
+        self.setWindowTitle('SurfR-CaT')
         self.show()
         ############################
         
@@ -373,7 +374,7 @@ class calibrate_GetHorizonWindow(QWidget):
         self.setLayout(fullLayout)
 
         self.setGeometry(400,100,1000,500)
-        self.setWindowTitle('RECALL')
+        self.setWindowTitle('SurfR-CaT')
         self.show()
         ############################ 
         
@@ -471,7 +472,7 @@ class PickGCPsWindow(QWidget):
         self.setLayout(fullLayout)
 
         self.setGeometry(400,100,1000,500)
-        self.setWindowTitle('RECALL')
+        self.setWindowTitle('SurfR-CaT')
         self.show()
         ############################
 
@@ -833,7 +834,7 @@ class getLidar_ChooseLidarSetWindow(QWidget):
         self.setLayout(fullLayout)
 
         self.setGeometry(400,100,200,800)
-        self.setWindowTitle('RECALL')
+        self.setWindowTitle('SurfR-CaT')
         self.show()
         ############################
         
@@ -976,6 +977,11 @@ class getLidar_SearchThread(QThread):
                     appropID.append(ID)
         
         matchingTable = RECALL.getLidar_GetMatchingNames(appropID)
+        
+        # Remove the strange Puerto Rico dataset that always shows up #
+        idxNames = matchingTable[matchingTable['ID']==8560].index
+        matchingTable.drop(idxNames,inplace=True)
+        ###############################################################
           
         print('Thread Done')   
 
@@ -1021,23 +1027,18 @@ class getLidar_StartSearchWindow(QWidget):
        
        # Right contents box setup #
        self.pb = QProgressBar()
-       but = QPushButton('Start')
-       info = QLabel('Press start to find lidar datsets for this camera:')
+       info = QLabel('Finding lidar datasets that cover this region:')
        self.val = QLabel('0%')
         
        rightGroupBox = QGroupBox()
        self.grd = QGridLayout()
        self.grd.addWidget(info,0,0,1,6)
-       self.grd.addWidget(but,1,1,1,4)
-       self.grd.addWidget(self.val,2,0,1,1)
-       self.grd.addWidget(self.pb,2,1,1,5)
-       self.grd.setAlignment(Qt.AlignCenter)
+       self.grd.addWidget(self.val,1,0,1,1)
+       self.grd.addWidget(self.pb,1,1,1,5)
+       #self.grd.setAlignment(Qt.AlignCenter)
        rightGroupBox.setLayout(self.grd)
        ##############################
        
-       # Assign signals to widgets #
-       but.clicked.connect(self.startWorker)
-       #############################
       
        # Full widget layout setup #
        fullLayout = QHBoxLayout()
@@ -1046,7 +1047,7 @@ class getLidar_StartSearchWindow(QWidget):
        self.setLayout(fullLayout)
 
        self.setGeometry(400,100,300,300)
-       self.setWindowTitle('RECALL')
+       self.setWindowTitle('SurfR-CaT')
        self.show()
        ############################
        
@@ -1057,13 +1058,9 @@ class getLidar_StartSearchWindow(QWidget):
        self.worker = getLidar_SearchThread(cameraLocation[0],cameraLocation[1])
        self.worker.threadSignal.connect(self.on_threadSignal)
        self.worker.finishSignal.connect(self.on_closeSignal)
+       self.worker.start()
        ##############################
-       
-     def startWorker(self):
-         '''
-         Function to start getLidar_SearchThread
-         '''
-         self.worker.start()                     
+                     
 
      def on_threadSignal(self,perDone):
          '''
@@ -1119,13 +1116,10 @@ class getLidar_StartSearchWindow(QWidget):
 # Get image module #
 #=============================================================================#
 
-class ShowImageWindow(QWidget):
+class getImagery_ChooseNewDate(QWidget):
     '''
-    Window showing an example image from the downloaded video. Window allows the user to determine weather or not the downloaded video can be used for GCP extraction.
-    If yes, the user can click Continue to move on the the lidar acquisition module. If no, the UI will return the user to camera selection window after they click No.
-    Note: should make this so, if no, the uer can manually enter a date and time for video download?
+    Window allowing the user to input desired date for imagery, if defaults were not good
     '''
-   
     def __init__(self):
         super().__init__()    
         
@@ -1134,52 +1128,108 @@ class ShowImageWindow(QWidget):
         else:
             app = QApplication.instance()             
         self.initUI()
-                
+        
     def initUI(self):
-
-       # Get all the frames #
-       frames = glob.glob('frame'+'*')
-       frame = frames[0]
-       ######################
        
-       # Make a pixmap out of the image #
-       label = QLabel()
-       pixmap = QPixmap(frame)
-       label.setPixmap(pixmap)
-       ##################################
+       # Left menu box setup #
+       bf = QFont()
+       bf.setBold(True)
+       leftBar1 = QLabel('• Welcome!')
+       leftBar2 = QLabel('• Get imagery')
+       leftBar2.setFont(bf)
+       leftBar3 = QLabel('• Get lidar data')
+       leftBar4 = QLabel('• Pick GCPs')
+       leftBar5 = QLabel('• Calibrate')
        
-       # Define widgets #
-       label.resize(pixmap.width(),pixmap.height())
-       txt = QLabel('Is this image clear enough to allow feature identification? Pressing "Yes" will launch the lidar data download process.')
-       noBut = QPushButton('No')
-       yesBut = QPushButton('Yes')
-       ##################
+       leftGroupBox = QGroupBox('Contents:')
+       vBox = QVBoxLayout()
+       vBox.addWidget(leftBar1)
+       vBox.addWidget(leftBar2)
+       vBox.addWidget(leftBar3)
+       vBox.addWidget(leftBar4)
+       vBox.addWidget(leftBar5)
+       vBox.addStretch(1)
+       leftGroupBox.setLayout(vBox)
+       ########################    
        
-       # Link widgets with signals #
-       yesBut.clicked.connect(self.getLidar_SearchThread)
+       # Right contents box setup #
+       lblDir1 = QLabel('Input desired date below (in yyyy,mm,dd format). Imagery dates of each camera can be found at http://webcat-video.axds.co/status/')
+       lblDir1.setWordWrap(True)
+       self.bxYear = QLineEdit()
+       self.bxMonth = QLineEdit()
+       self.bxDay = QLineEdit()
+       lblYear = QLabel('Year:')
+       lblMonth = QLabel('Month:')
+       lblDay = QLabel('Day:')
+       contBut = QPushButton('Continue >')
+       
+       rightGroupBox = QGroupBox()
+       self.grd = QGridLayout()
+       self.grd.addWidget(lblDir1,0,0,1,4)
+       self.grd.addWidget(self.bxYear,1,2,1,2)
+       self.grd.addWidget(self.bxMonth,2,2,1,2)
+       self.grd.addWidget(self.bxDay,3,2,1,2)
+       self.grd.addWidget(lblYear,1,0,1,2)
+       self.grd.addWidget(lblMonth,2,0,1,2)
+       self.grd.addWidget(lblDay,3,0,1,2)
+       self.grd.addWidget(contBut,4,2,1,2)
+       #grd.setAlignment(Qt.AlignCenter)
+       rightGroupBox.setLayout(self.grd)
+       ##############################
+       
+       # Assign signals to widgets #
+       contBut.clicked.connect(self.getInputs)
        #############################
-       
-       # Set the layout of the window #
-       grd = QGridLayout()
-       grd.addWidget(label,0,0,4,4)
-       grd.addWidget(txt,5,0,1,4)
-       grd.addWidget(noBut,6,0,1,1)
-       grd.addWidget(yesBut,6,1,1,1)
-       
-       self.setLayout(grd)
-       self.setGeometry(400,100,10,10)
-       self.setWindowTitle('RECALL')
+            
+       # Full widget layout setup #
+       fullLayout = QHBoxLayout()
+       fullLayout.addWidget(leftGroupBox)
+       fullLayout.addWidget(rightGroupBox)
+       self.setLayout(fullLayout)
+
+       self.setGeometry(400,100,600,300)
+       self.setWindowTitle('SurfR-CaT')
        self.show()
-       ################################
+       ############################
        
-    def getLidar_SearchThread(self):
+       
+    def getInputs(self):
+       yr = int(self.bxYear.text())
+       mo = int(self.bxMonth.text())
+       day = int(self.bxDay.text())
+       print(yr)
+           
+       # Instantiate worker threads #
+       self.worker = DownloadVidThread(yr,mo,day)
+       self.worker2 = CheckPTZThread()
+       ##############################
+       
+       lab1 = QLabel('Downloading Video...')
+       self.grd.addWidget(lab1,5,0,1,2)
+       
+       self.worker.start()
+       self.worker.finishSignal.connect(self.on_closeSignal)
+
+    def on_closeSignal(self):
        '''
-       Takes user to the lidar acquisition module on Yes click
+       When download video thread is done, function shows a done label and starts the video decimation worker thread
+       '''
+       labDone = QLabel('Done.')
+       self.grd.addWidget(labDone,5,3,1,1)
+       
+       lab2 = QLabel('Checking different views...')
+       self.grd.addWidget(lab2,6,0,1,2)
+       
+       self.worker2.start()
+       self.worker2.finishSignal.connect(self.on_closeSignal2)       
+    
+    def on_closeSignal2(self):
+       '''
+       When PTZ check thread is complete, function shows a Done label and moves to the next window
        '''
        self.close()
-       self.lidar = getLidar_StartSearchWindow()
-       self.getLidar_StartSearchWindow.show()
-        
+       self.cv = ChooseViewWindow()
+       self.cv.show()
 
 
 class OtherCameraLocationInputWindow(QWidget):
@@ -1262,7 +1312,7 @@ class OtherCameraLocationInputWindow(QWidget):
        self.setLayout(fullLayout)
 
        self.setGeometry(400,100,200,300)
-       self.setWindowTitle('RECALL')
+       self.setWindowTitle('SurfR-CaT')
        self.show()
        ############################
        
@@ -1289,6 +1339,103 @@ class OtherCameraLocationInputWindow(QWidget):
            pickle.dump(pthToImagery,f)       
 
 
+class ChooseViewWindow(QWidget):
+    '''
+    Window allowing the user to choose which view they want to calibrate from a PTZ camera.
+    '''
+   
+    def __init__(self):
+        super().__init__()    
+        
+        if not QApplication.instance():
+            app = QApplication(sys.argv)
+        else:
+            app = QApplication.instance()             
+        self.initUI()
+        
+    def initUI(self):
+       
+       f1 = open(wd+'viewDF.pkl','rb')
+       f2 = open(wd+'vidFile.pkl','rb')
+       self.viewDF = pickle.load(f1)
+       vidFile = pickle.load(f2)
+       vidPth = wd+vidFile
+       
+       self.frameDF = RECALL.getImagery_SeperateViewsAndGetFrames(vidPth,self.viewDF)
+       numViews = len(self.frameDF)
+       
+       # Set up the text label #
+       txt = QLabel('Automatically detected unique camera views are shown below. Choose the view which you would like to calibrate. If the detected view(s) are not correct, press the Not Correct button. If the image(s) are not clear enough to allow for feature extraction, press the Need New Images button.')
+       txt.setWordWrap(True)
+       txt2 = QLabel('Select view to calibrate:')
+       cb = QComboBox()
+       cb.addItem('--')
+       
+       self.grd = QGridLayout()
+       self.grd.addWidget(txt,0,0,1,numViews)
+       self.grd.addWidget(txt2,2,0,1,numViews)
+       
+       # Display image from each view with checkbox underneath #
+       for i in range(0,numViews):
+           im = self.frameDF['Image'][i]
+           cv2.imwrite('frame.png', im)
+           
+           plt.ioff()
+           self.figure = plt.figure()
+           self.ax = self.figure.add_subplot(111)
+           self.canvas = FigureCanvas(self.figure)
+        
+           img = mpimg.imread(wd+'frame.png')
+           imgplot = plt.imshow(img)
+           self.canvas.draw()
+          
+           self.grd.addWidget(self.canvas,1,i,1,numViews-(numViews-i)+1)
+           cb.addItem('View'+str(i+1))
+
+       self.grd.addWidget(cb,3,0,1,numViews)
+       badBut = QPushButton('Views are not correct')
+       badBut2 = QPushButton('Need new images')
+       self.grd.addWidget(badBut,4,0,1,numViews)
+       self.grd.addWidget(badBut2,5,0,1,numViews)
+       
+       # Connect widgets with signals #
+       cb.activated.connect(self.viewSelected)
+       badBut.clicked.connect(self.tryAgain)
+       badBut2.clicked.connect(self.chooseNewDate)
+       ################################
+
+       # Full widget layout setup #
+       self.setLayout(self.grd)
+
+       self.setGeometry(400,100,1000,500)
+       self.setWindowTitle('SurfR-CaT')
+       self.show()
+       ############################
+       
+    def viewSelected(self,item):
+       '''
+       Takes user to the lidar acquisition module on Yes click
+       '''
+       viewSel = item-1
+       im = self.frameDF['Image'][viewSel]
+       cv2.imwrite('frameUse.png', im)
+       
+#           self.close()
+#           self.lidar = getLidar_StartSearchWindow()
+#           self.getLidar_StartSearchWindow.show()
+       
+    def tryAgain(self):
+       pass
+   
+    def chooseNewDate(self):
+       '''
+       Pops up window for user to input date for imagery download
+       '''
+       self.close()
+       self.newDate = getImagery_ChooseNewDate()
+       self.newDate.show()
+
+
 
 class DownloadVidThread(QThread):
     '''
@@ -1297,8 +1444,11 @@ class DownloadVidThread(QThread):
     threadSignal = pyqtSignal('PyQt_PyObject')
     finishSignal = pyqtSignal('PyQt_PyObject')
 
-    def __init__(self):
+    def __init__(self,year,month,day):
         super().__init__()
+        self.year = year
+        self.month = month
+        self.day = day
         
     def run(self):
         
@@ -1306,8 +1456,11 @@ class DownloadVidThread(QThread):
        
        f = open(wd+'CameraName.pkl','rb')      
        camToInput = pickle.load(f)
-     
-       vidFile = RECALL.getImagery_GetVideo(camToInput)
+       
+       if self.year and self.month and self.day:
+           vidFile = RECALL.getImagery_GetVideo(camToInput,year=self.year,month=self.month,day=self.day)
+       else:
+           vidFile = RECALL.getImagery_GetVideo(camToInput)
        
        # Deal with Buxton camera name change #
        fs = os.path.getsize(wd+vidFile) # Get size of video file #  
@@ -1322,9 +1475,11 @@ class DownloadVidThread(QThread):
         
        print('Thread Done')
 
-class DecimateVidThread(QThread):
+
+
+class CheckPTZThread(QThread):
     ''' 
-    Worker thread to decimate obtained video to 20 still-images. Uses the DecimateVideo function from RECALL.
+    Worker thread to check if camera is a PTZ camera. Uses the CheckPTZ function from RECALL.
     '''
     finishSignal = pyqtSignal('PyQt_PyObject')
 
@@ -1338,14 +1493,17 @@ class DecimateVidThread(QThread):
        f = open(wd+'vidFile.pkl','rb')      
        vidFile = pickle.load(f)
        
-       # Decimate the video to 20 still-images #       
+       # Check if PTZ #       
        fullVidPth = wd + vidFile           
-       RECALL.getImagery_DecimateVideo(fullVidPth)
+       viewDF,frameVec = RECALL.getImagery_CheckPTZ(fullVidPth)
+       
+       with open(wd+'viewDF.pkl','wb') as f:
+           pickle.dump(viewDF,f)
            
-       self.finishSignal.emit(1)   
+       self.finishSignal.emit(1) 
         
        print('Thread Done')
-
+       
 
 class WebCATLocationWindow(QWidget):
     '''
@@ -1422,13 +1580,13 @@ class WebCATLocationWindow(QWidget):
        self.setLayout(fullLayout)
 
        self.setGeometry(400,100,200,300)
-       self.setWindowTitle('RECALL')
+       self.setWindowTitle('SurfR-CaT')
        self.show()
        ############################
         
        # Instantiate worker threads #
-       self.worker = DownloadVidThread()
-       self.worker2 = DecimateVidThread()
+       self.worker = DownloadVidThread(None,None,None)
+       self.worker2 = CheckPTZThread()
        ##############################
 
     def getSelected(self,item):
@@ -1474,25 +1632,29 @@ class WebCATLocationWindow(QWidget):
 
     def on_closeSignal(self):
        '''
-       When download video thread is done, function shows a done label and starts the video decimation worker thread
+       When download video thread is done, function shows a done label and starts the PTZ check worker thread
        '''
        labDone = QLabel('Done.')
        self.grd.addWidget(labDone,3,1,1,1)
        
-       lab2 = QLabel('Decimating video to images...')
+       lab2 = QLabel('Checking different views...')
        self.grd.addWidget(lab2,4,0,1,1)
        
        self.worker2.start()
        self.worker2.finishSignal.connect(self.on_closeSignal2)       
     
     def on_closeSignal2(self):
+       ''' 
+       After PTZ is checked, take user to view choice window.
        '''
-       When video decimation thread is complete, function shows a Done label and moves to the next window (ShowImageWindow)
-       '''
-       self.close()
-       self.imWindow = ShowImageWindow()
-       self.imWindow.show()
+        
+       labDone = QLabel('Done.')
+       self.grd.addWidget(labDone,4,1,1,1)
        
+       self.close()
+       self.cv = ChooseViewWindow()
+       self.cv.show()
+
 
 
 class ChooseCameraWindow(QWidget):
@@ -1554,7 +1716,7 @@ class ChooseCameraWindow(QWidget):
         self.setLayout(fullLayout)
 
         self.setGeometry(400,100,200,300)
-        self.setWindowTitle('RECALL')
+        self.setWindowTitle('SurfR-CaT')
         self.show()
         ###############################
      
@@ -1612,7 +1774,7 @@ class WelcomeWindow(QWidget):
             
 
         # Right contents box setup #      
-        txt = QLabel('Welcome to the SurFcamera Remote CAlibration Tool (SurfR-CaT)!')
+        txt = QLabel('Welcome to the Surfcamera Remote Calibration Tool (SurfR-CaT)!')
         txt2 = QLabel('Developed in partnership with the Southeastern Coastal Ocean Observing Regional Association (SECOORA), '
                       +'the United States Geological Survey (USGS), and the National Oceanic and Atmospheric administration (NOAA), this tool allows you to calibrate any coastal camera of  '
                       +'known location with accessible video footage. For documentation on the methods employed by the tool, please refer to the GitHub readme (link here). If you have an '
@@ -1644,7 +1806,7 @@ class WelcomeWindow(QWidget):
         self.setLayout(fullLayout)
 
         self.setGeometry(400,100,200,300)
-        self.setWindowTitle('SurFR-CaT')
+        self.setWindowTitle('SurfR-CaT')
         self.show()
         ###############################
          

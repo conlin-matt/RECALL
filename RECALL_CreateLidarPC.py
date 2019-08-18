@@ -73,7 +73,7 @@ def RECALL_CreateLidarPC(lidarDat,cameraLoc_lat,cameraLoc_lon):
     return pc
             
     
-pc = RECALL_CreateLidarPC(lidarDat,25.812227, -80.122400)
+pc = RECALL_CreateLidarPC(lidarDat,32.654731,-79.939322)
 
 
 

@@ -223,7 +223,7 @@ def RECALL_GetLidarObs(cameraLoc_lat,cameraLoc_lon):
         # Keep the tile if min distance to either of lines meets criterion #
         try:
             rec = sf.record(shapeNum)
-            if min(dist1)<300 or min(dist2)<300:
+            if min(dist1)<600 or min(dist2)<600:
                 tilesKeep.append(rec['Name'])
         except:
             pass
@@ -307,6 +307,6 @@ def RECALL_GetLidarObs(cameraLoc_lat,cameraLoc_lon):
     return lidarDat
         
     
-lidarDat = RECALL_GetLidarObs(25.812227, -80.122400)    
+lidarDat = RECALL_GetLidarObs(32.654731,-79.939322)    
     
     

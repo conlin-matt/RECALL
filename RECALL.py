@@ -22,7 +22,7 @@ import cv2
 #============================================================================#
 # Get WebCAT video #
 #============================================================================#
-def getImagery_GetVideo(camToInput,year=2019,month=6,day=3,hour=1000):
+def getImagery_GetVideo(camToInput,year=2018,month=11,day=3,hour=1000):
     
     """
     Function to download a video clip from a specified WebCAT camera to local directory. The desired year, month, day, and time can be given, 
@@ -61,13 +61,149 @@ def getImagery_GetVideo(camToInput,year=2019,month=6,day=3,hour=1000):
     return vidFile
 
 #=============================================================================#
-
  
+
+#=============================================================================#
+# Check if the camera is a PTZ camera #
+#=============================================================================#
+def getImagery_CheckPTZ(vidPth):
+    import numpy as np
+    import math
+    import matplotlib.pyplot as plt
+    import cv2 
+    import os
+    import pandas as pd
+
+    # Get the video capture #
+    vid = cv2.VideoCapture(vidPth)
+    
+    # Find the number of frames in the video #
+    vidLen = int(vid.get(7))
+
+    # Calc horizon angle of each frame #
+    psis = np.array([])
+    frameNum = np.array([])
+    for count in range(0,vidLen,int(vidLen/1000)):
+        vid.set(1,count) #Set the property that we will pull the frame numbered by count #  
+        test,image = vid.read()
+        
+        # Erode the image (morphological erosion) #
+        kernel = np.ones((5,5),np.uint8)
+        imeroded = cv2.erode(image,kernel,iterations = 2)
+
+        # Find edges using Canny Edge Detector #
+        edges = cv2.Canny(imeroded,50,100)
+    
+        # Find longest straight edge with Hough Transform #
+        lines = cv2.HoughLines(edges,1,np.pi/180,200)
+        if lines is not None:
+            for rho,theta in lines[0]: # The first element is the longest edge #
+                a = np.cos(theta)
+                b = np.sin(theta)
+                x0 = a*rho
+                y0 = b*rho
+                x1 = int(x0 + 1000*(-b))
+                y1 = int(y0 + 1000*(a))
+                x2 = int(x0 - 1000*(-b))
+                y2 = int(y0 - 1000*(a))
+            
+            # Calc horizon angle (psi) #
+            psi = math.atan2(y1-y2,x2-x1)
+        
+            # Save horizon angle and the number of the frame #
+            psis = np.append(psis,psi)
+            frameNum = np.append(frameNum,count)
+        
+    
+    # Round angles to remove small fluctuations, and take abs #
+    psis = np.round(abs(psis),3)
+
+    # Find the frames where calculated angle changes #
+    dif = np.diff(psis)
+    changes = np.array(np.where(dif!=0))
+
+    # Calculate the length of each angle segment between when the angle changes.
+    if np.size(changes)>0:
+        segLens = np.array([])
+        vals = np.array([])
+        for i in range(0,len(changes[0,:])+1):
+            if i == len(changes[0,:]):
+                segLen = len(psis)-(changes[0,i-1]+1)
+                val = psis[len(psis)-1]    
+            elif changes[0,i] == changes[0,0]:
+                segLen = changes[0,i]
+                val = psis[0]
+            else:
+                segLen = changes[0,i]-changes[0,i-1]
+                val = psis[changes[0,i-1]+1]
+                
+            segLens = np.append(segLens,segLen)
+            vals = np.append(vals,val)
+            
+        # Keep only chunks that are continuous over a threshold #    
+        IDs_good = np.array(np.where(segLens>=10)) # Using 10 seems to work, but this could be changed #
+        valsKeep = vals[IDs_good]
+    
+        # Find the unique views #
+        viewAngles = np.unique(valsKeep)
+
+        # Find and extract the frames contained within each view #
+        frameVec = np.array(range(0,vidLen,int(vidLen/1000)))
+        angles = []
+        frames = []
+        for i in viewAngles:
+            iFrames = frameVec[np.array(np.where(psis == i))]
+            angles.append(i)
+            frames.append([iFrames])
+        
+        viewDict = {'View Angles':angles,'Frames':frames}
+        viewDF = pd.DataFrame(viewDict)
+        
+        return viewDF,frameVec
+    
+    else:
+   
+        # Find the unique views #
+        viewAngles = np.unique(psis)
+    
+        # Find and extract the frames contained within each view #
+        frameVec = np.array(range(0,vidLen,int(vidLen/1000)))
+        angles = []
+        frames = []
+        for i in viewAngles:
+            iFrames = np.array(np.where(psis == i))
+            angles.append(i)
+            frames.append([iFrames])
+            
+        viewDict = {'View Angles':angles,'Frames':frames}
+        viewDF = pd.DataFrame(viewDict)
+        
+        return viewDF,frameVec
+
+    
+
+def getImagery_SeperateViewsAndGetFrames(vidPth,viewDF):
+    import pandas as pd
+    
+    numViews = len(viewDF)
+    vid = cv2.VideoCapture(vidPth)
+    
+    frameDF = pd.DataFrame(columns=['View','Image'])
+    for i in range(0,numViews):
+        frameTake = viewDF['Frames'][i][0][0][1]
+        
+        vid.set(1,frameTake) # Set the property that we will pull the desired frame #  
+        test,image = vid.read()
+        
+        frameDF = frameDF.append({'View':i,'Image':image},ignore_index=True)
+        
+    return frameDF
+
 
 #=============================================================================#
 # Decimate the video to some still images #
 #=============================================================================#
-def getImagery_DecimateVideo(vidPth):
+def getImagery_ExtractStills(vidPth,viewDF,frameVec):
     
     """
     Function to decimate WebCAT video clip downloaded with RECALL_GetVideo into still images so that a still image may be pulled
@@ -82,7 +218,7 @@ def getImagery_DecimateVideo(vidPth):
     vid = cv2.VideoCapture(vidPth)
 
     # Find the number of frames in the video #
-    vidLen = int(vid.get(7))
+    frames
    
     # Pull 20 frames evenly distributed through the 10 minute video and save them to the video directory #
     for count in range(0,vidLen,int(vidLen/20)):
