@@ -28,6 +28,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg 
 import cv2
+import utm
+import math
 
 wd = '/Users/matthewconlin/Documents/Research/WebCAT/'
 
@@ -72,8 +74,8 @@ class calibrate_ShowCalibResultsWindow(QWidget):
         self.ax = self.figure.add_subplot(111)
         self.canvas = FigureCanvas(self.figure)
         
-        frames = glob.glob('frame'+'*')
-        frame = frames[1]
+        frames = glob.glob('frameUse'+'*')
+        frame = frames[0]
         
         img = mpimg.imread(wd+'/'+frame)
         imgplot = plt.imshow(img)
@@ -81,39 +83,35 @@ class calibrate_ShowCalibResultsWindow(QWidget):
         # Plot the GCPs and reprojected positions #
         f1 = open(wd+'GCPs_im.pkl','rb') 
         f2 = open(wd+'GCPs_lidar.pkl','rb') 
-        f3 = open(wd+'Kopt.pkl','rb') 
-        f4 = open(wd+'Ropt.pkl','rb') 
-        f5 = open(wd+'topt.pkl','rb') 
-        f6 = open(wd+'k1.pkl','rb') 
-        f7 = open(wd+'k2.pkl','rb') 
+        f3 = open(wd+'calibResults.pkl','rb') 
+        f4 = open(wd+'x0.pkl','rb')
+        f5 = open(wd+'y0.pkl','rb')
+       
         GCPs_im = pickle.load(f1)
         GCPs_lidar = pickle.load(f2)
-        Kopt = pickle.load(f3)
-        Ropt = pickle.load(f4)
-        topt = pickle.load(f5)
-        k1 = pickle.load(f6)
-        k2 = pickle.load(f7)
-        
+        results = pickle.load(f3)
+        x0 = pickle.load(f4)
+        y0 = pickle.load(f5)
+       
         # Plot the GCPs as IDd in the image #
         colormap = plt.cm.jet
-        plt.gca().set_color_cycle([colormap(i) for i in np.linspace(0,.9,len(GCPs_im))])
+        plt.gca().set_prop_cycle(color=[colormap(i) for i in np.linspace(0,.9,len(GCPs_im))])
         for i in range(0,len(GCPs_im)):
             Xc = GCPs_im[i,:]
             plt.plot(Xc[0],Xc[1],'o')
         
         # Plot the reprojection positions of the GCPs and the residuals (differences) between identified and reprojected #
+        uProj,vProj = RECALL.calibrate_CalcReprojPos(GCPs_lidar,results,x0,y0)
+
         resid = np.empty([0])
         colormap = plt.cm.jet
         for i in range(0,len(GCPs_im)):
-            Xw = np.append(np.array(GCPs_lidar[i,:]),1)
             Xc = GCPs_im[i,:]
-                
-            uProj,vProj = RECALL.calibrate_GetPointProjection(Kopt,Ropt,topt,k1,k2,Xw,Xc)
-            
-            plt.plot(uProj,vProj,'x')
+                            
+            plt.plot(uProj[i],vProj[i],'x')
             
             # Compute residual #
-            residV = np.array([Xc[0]-uProj,Xc[1]-vProj]) 
+            residV = np.array([Xc[0]-uProj[i],Xc[1]-vProj[i]]) 
             resid = np.append(resid,np.linalg.norm(residV))
             
             
@@ -151,43 +149,53 @@ class calibrate_ShowCalibResultsWindow(QWidget):
         
 
 
-class calibrate_CalibrateThread1(QThread):   
+class calibrate_CalibrateThread(QThread):   
         
-    finishSignal1 = pyqtSignal('PyQt_PyObject')
-    finishSignal2 = pyqtSignal('PyQt_PyObject')
+    finishSignal = pyqtSignal('PyQt_PyObject')
 
-    def __init__(self,GCPs_im,GCPs_lidar,horizonPts,cameraElev,cameraDir):
+    def __init__(self,img,GCPs_im,GCPs_lidar,horizonPts,ZL,kappa):
         super().__init__()
+        self.img = img
         self.GCPs_im = GCPs_im
         self.GCPs_lidar = GCPs_lidar
         self.horizonPts = horizonPts
-        self.cameraElev = cameraElev
-        self.cameraDir = cameraDir
+        self.ZL = ZL
+        self.kappa = kappa
         
     def run(self):
         
         print('Thread Started')
         
-        t,k,R = RECALL.calibrate_GetInitialEstimate(self.GCPs_im,self.GCPs_lidar,self.horizonPts,self.cameraElev,self.cameraDir)                   
-        self.finishSignal1.emit(1)    
-        Kopt,Ropt,topt,k1,k2 = RECALL.calibrate_OptimizeEstimate(t,k,R,self.GCPs_im,self.GCPs_lidar)
-        self.finishSignal2.emit(1)    
+        # Get initial approximations for all parameters #
+        f,x0,y0 = RECALL.calibrate_getInitialApprox_IOPs(self.img)
+        print('Func 1 good')
+        omega,phi,xi,psi = RECALL.calibrate_getInitialApprox_op(self.horizonPts,f,self.ZL)
+        print('Func 2 good')
+        kappa = self.kappa
+        XL = 0
+        YL = 0
+        ZL = self.ZL
         
-        with open(wd+'Kopt.pkl','wb') as f:
-            pickle.dump(Kopt,f)
-        with open(wd+'Ropt.pkl','wb') as f:
-            pickle.dump(Ropt,f)  
-        with open(wd+'topt.pkl','wb') as f:
-            pickle.dump(topt,f)              
-        with open(wd+'k1.pkl','wb') as f:
-            pickle.dump(k1,f)             
-        with open(wd+'k2.pkl','wb') as f:
-            pickle.dump(k2,f)          
-        
+        unknownsVec = np.hstack([omega,phi,kappa,XL,YL,ZL,f])
+        print(unknownsVec)
+        # Do the calibration #
+        results = RECALL.calibrate_PerformSpaceResection_CPro(unknownsVec,self.GCPs_lidar,self.GCPs_im,x0,y0,xi,psi)
+        print('Func 3 good')
+        with open(wd+'calibResults.pkl','wb') as f:
+            pickle.dump(results,f)
+            
+        with open(wd+'x0.pkl','wb') as f:
+            pickle.dump(x0,f)
+        with open(wd+'y0.pkl','wb') as f:
+            pickle.dump(y0,f)
+            
+        self.finishSignal.emit(1)    
+
         print('Thread Done')
+        
 
 
-class calibrate_FinalInputs(QWidget):
+class calibrate_FinalInputs_ZAndDir(QWidget):
    def __init__(self):
         super().__init__()    
         
@@ -259,19 +267,31 @@ class calibrate_FinalInputs(QWidget):
         ################################
         
    def getInputs(self,item):
-        dirCodeList = [0,1,2,3,4]
-        self.cameraDir = dirCodeList[item]      
-        self.cameraElev = float(self.elevBx.text())
-
-        f1 = open(wd+'GCPs_im.pkl','rb') 
-        f2 = open(wd+'GCPs_lidar.pkl','rb') 
-        f3 = open(wd+'horizonPts.pkl','rb') 
+       # Get the ZL and kappa inputs #
+        kappaList = [0,-math.pi/4,(-3*math.pi)/4,math.pi/4,(3*math.pi)/4]
+        
+        self.kappa= kappaList[item]      
+        self.ZL = float(self.elevBx.text())
+        print(self.kappa)
+        print(self.ZL)
+        ###################################
+        
+        # Also re-load the image, GCPs, and horizon points for input into the calibtation thread #
+        frames = glob.glob('frame'+'*')
+        frame = frames[1]
+        img = mpimg.imread(wd+'/'+frame)
+        
+        f1 = open(wd+'GCPs_im.pkl','rb')
+        f2 = open(wd+'GCPs_lidar.pkl','rb')
+        f3 = open(wd+'horizonPts.pkl','rb')
+      
         GCPs_im = pickle.load(f1)
         GCPs_lidar = pickle.load(f2)
         horizonPts = pickle.load(f3)
-       
+        ##########################################################################
+             
         # Instantiate worker thread now that we have all the inputs #
-        self.worker = calibrate_CalibrateThread1(GCPs_im,GCPs_lidar,horizonPts,self.cameraElev,self.cameraDir)
+        self.worker = calibrate_CalibrateThread(img,GCPs_im,GCPs_lidar,horizonPts,self.ZL,self.kappa)
         #############################################################
         
    def calibrate(self):
@@ -282,26 +302,18 @@ class calibrate_FinalInputs(QWidget):
         self.cb.setParent(None)
         self.calibBut.setParent(None)
         
-        self.firstThreadLab = QLabel('Getting initial estimates:')
+        self.firstThreadLab = QLabel('Calibrating...')
         self.grd.addWidget(self.firstThreadLab,0,0,1,3)
         
         self.worker.start()
-        self.worker.finishSignal1.connect(self.on_closeSignal1)  
-        self.worker.finishSignal2.connect(self.on_closeSignal2)  
-        self.worker.finishSignal3.connect(self.on_closeSignal3)  
-   
-   def on_closeSignal1(self):
-        self.firstThreadDoneLab = QLabel('Done.')
-        self.secondThreadLab = QLabel('Optimizing estimates:')
-        self.grd.addWidget(self.firstThreadDoneLab,0,3,1,2)
-        self.grd.addWidget(self.secondThreadLab,1,0,1,3)
-        
-   def on_closeSignal2(self):
+        self.worker.finishSignal.connect(self.on_closeSignal)  
+      
+   def on_closeSignal(self):
         self.secondThreadDoneLab = QLabel('Done.')
         self.compLab = QLabel('Calibration complete!')
         self.resBut = QPushButton('Results >')
         self.grd.addWidget(self.secondThreadDoneLab,1,3,1,2)
-        self.grd.addWidget(self.compLab,2,0,1,3)
+        self.grd.addWidget(self.compLab,1,0,1,3)
         self.grd.addWidget(self.resBut,2,3,1,2)
                
         self.resBut.clicked.connect(self.on_resClick)
@@ -310,10 +322,9 @@ class calibrate_FinalInputs(QWidget):
         self.close()
         self.finalWindow = calibrate_ShowCalibResultsWindow()
         self.finalWindow.show()
-        
+    
 
-
-class calibrate_GetHorizonWindow(QWidget):
+class calibrate_FinalInputs_Horizon(QWidget):
    def __init__(self):
         super().__init__()    
         
@@ -349,11 +360,11 @@ class calibrate_GetHorizonWindow(QWidget):
         self.ax = self.figure.add_subplot(111)
         self.canvas = FigureCanvas(self.figure)
         
-        frames = glob.glob('frame'+'*')
-        frame = frames[1]
+        frames = glob.glob('frameUse'+'*')
+        frame = frames[0]
         
-        img = mpimg.imread(wd+'/'+frame)
-        imgplot = plt.imshow(img)
+        self.img = mpimg.imread(wd+'/'+frame)
+        imgplot = plt.imshow(self.img)
         
         self.canvas.draw()
         
@@ -379,7 +390,7 @@ class calibrate_GetHorizonWindow(QWidget):
         ############################ 
         
         # Get the horizon points #
-        self.pt = plt.ginput(n=2,show_clicks=True)   
+        self.pt = plt.ginput(n=2,show_clicks=True,timeout=0)   
         ##########################
         
         self.afterClick()
@@ -389,7 +400,7 @@ class calibrate_GetHorizonWindow(QWidget):
             pickle.dump(self.pt,f)
             
         self.close()
-        self.moreInputs = calibrate_FinalInputs()
+        self.moreInputs = calibrate_FinalInputs_ZAndDir()
         self.moreInputs.show()
         
 
@@ -439,7 +450,7 @@ class PickGCPsWindow(QWidget):
         self.ax = self.figure.add_subplot(111)
         self.canvas = FigureCanvas(self.figure)
         
-        frames = glob.glob('frame'+'*')
+        frames = glob.glob('frameUse'+'*')
         frame = frames[0]
         
         img = mpimg.imread(wd+'/'+frame)
@@ -447,7 +458,7 @@ class PickGCPsWindow(QWidget):
         
         self.canvas.draw()
         
-        self.introLab = QLabel('Welcome to the GCP picking module! Here, you will be guided through the process of co-locating points in the image and the lidar observations. You will need to identify the correspondence of at least 6 unique points for the calibration to work.')
+        self.introLab = QLabel('Welcome to the GCP picking module! Here, you will be guided through the process of co-locating points in the image and the lidar observations. You must identify the correspondence of at least 3 unique points for the calibration to work.')
         self.introLab.setWordWrap(True)
         self.goLab = QLabel('Ready to co-locate a point?:')
         self.goBut = QPushButton('Go')
@@ -479,27 +490,44 @@ class PickGCPsWindow(QWidget):
 
    def getPoints1(self):
        print('In Function')
+       
+       f = open(wd+'lidarPC.pkl','rb')
+       self.pc = pickle.load(f)
+       self.v = pptk.viewer(self.pc,self.pc.iloc[:,2])
+       self.v.set(point_size=0.1,theta=-25,phi=0,lookat=[0,0,20],color_map_scale=[-1,3],r=0)
 
        self.goBut.setParent(None)
        self.goLab.setParent(None)
        self.introLab.setParent(None)
+       self.helpBut = QPushButton('Help')
        
+       self.helpBut.clicked.connect(self.onHelpClick)
+
 #       self.setWindowTitle(str(len(self.GCPs_lidar))+'/6 GCPs identified')
              
-       self.dirLab = QLabel('Click on the point in the image:')      
-       self.grd.addWidget(self.dirLab,0,0,1,2)
+       self.dirLab1 = QLabel('The lidar data has been displayed in a seperate window. To identify a ground control point, slect a point in the image followed by the same point in the lidar data. Click Help for more info.')      
+       self.dirLab1.setWordWrap(True)
+       self.dirLab2 = QLabel('Start by click on your first point in the image:')
+       self.grd.addWidget(self.dirLab1,0,0,1,4)
+       self.grd.addWidget(self.dirLab2,1,0,1,4)
+       self.grd.addWidget(self.helpBut,7,0,1,1)
+
        
-       self.pt = plt.ginput(show_clicks=True)   
+       self.pt = plt.ginput(timeout=0)   
        print(self.pt)
        
        self.afterClick()
-       
+
+
    def afterClick(self):
        print('In Function')
        
-       self.grd.removeWidget(self.dirLab)
-       self.dirLab.deleteLater()
-       self.dirLab = None
+       self.grd.removeWidget(self.dirLab1)
+       self.dirLab1.deleteLater()
+       self.dirLab1 = None
+       self.grd.removeWidget(self.dirLab2)
+       self.dirLab2.deleteLater()
+       self.dirLab2 = None
        
        self.savedLab = QLabel('Image coordinate of point saved!')
        self.dirLab2 = QLabel('Now, identify the point in the lidar point cloud (click Help for directions). Then, click Continue (to pick more) or Stop (to finish picking).')
@@ -523,15 +551,15 @@ class PickGCPsWindow(QWidget):
 #       else:
 #           self.stopBut.setEnabled(True)
        
-       f = open(wd+'lidarPC.pkl','rb')
-       self.pc = pickle.load(f)
-       self.v = pptk.viewer(self.pc,self.pc.iloc[:,2])
-       self.v.set(point_size=0.1,theta=-25,phi=0,lookat=[0,0,20],color_map_scale=[-1,10],r=0)
+#       f = open(wd+'lidarPC.pkl','rb')
+#       self.pc = pickle.load(f)
+#       self.v = pptk.viewer(self.pc,self.pc.iloc[:,2])
+#       self.v.set(point_size=0.1,theta=-25,phi=0,lookat=[0,0,20],color_map_scale=[-1,3],r=0)
               
    def onHelpClick(self):
        msg = QMessageBox(self)
        msg.setIcon(msg.Question)
-       msg.setText('The lidar point cloud has been opened in a seperate window. The viewer can be navigated by clicking and dragging (to rotate view) as well as zooming in/out. Try to rotate/zoom the view until it looks as similar to the image as you can. To select a point, first right click anywhere in the viewer. Then, hold Control (Windows) or Command (Mac) and left click on the point to select it. Then return to this program to continue.')
+       msg.setText('The lidar point cloud has been opened in a seperate window. The viewer can be navigated by clicking and dragging (to rotate view) as well as zooming in/out. Try to rotate/zoom the view until it looks as similar to the image as you can. To select a point, first right click anywhere in the viewer. Then, hold Control (Windows) or Command (Mac) and left click on the point to select it. Then return to this program to continue. IMPORTANT: You must right click in the viewer before selecting each new point in the lidar data.')
        msg.setStandardButtons(msg.Ok)
        msg.show()
        
@@ -559,7 +587,7 @@ class PickGCPsWindow(QWidget):
        self.grd.addWidget(self.savedLab2,0,0,1,2)
        self.grd.addWidget(self.dirLab3,1,0,1,2)
 
-       self.pt = plt.ginput(show_clicks=True)   
+       self.pt = plt.ginput(timeout=0)   
        print(self.pt)
        
        self.afterClick2()
@@ -642,7 +670,7 @@ class PickGCPsWindow(QWidget):
        with open(wd+'GCPs_lidar.pkl','wb') as f:
             pickle.dump(self.GCPs_lidar,f)
             
-       self.calibrateWindow = calibrate_GetHorizonWindow()
+       self.calibrateWindow = calibrate_FinalInputs_Horizon()
        self.calibrateWindow.show()
     
 #=============================================================================#      
@@ -816,7 +844,7 @@ class getLidar_ChooseLidarSetWindow(QWidget):
         self.layout.addWidget(self.dir,0,0,1,1)
         self.layout.addWidget(self.table,1,0,4,4)
         self.layout.addWidget(self.contBut,6,3,1,1)
-        self.layout.addWidget(self.backBut,6,0,1,1)
+        self.layout.addWidget(self.backBut,6,2,1,1)
         self.layout.setAlignment(Qt.AlignCenter)
         rightGroupBox.setLayout(self.layout)
         ##############################
@@ -930,7 +958,7 @@ class getLidar_ChooseLidarSetWindow(QWidget):
 
         self.layout.addWidget(self.label,9,0,1,2)
         self.layout.addWidget(contBut2,10,3,1,1)
-        self.layout.addWidget(backBut2,10,0,1,1)
+        self.layout.addWidget(backBut2,10,2,1,1)
         
         contBut2.clicked.connect(self.moveToNext)
         backBut2.clicked.connect(self.GoBack)
@@ -943,7 +971,7 @@ class getLidar_ChooseLidarSetWindow(QWidget):
         
     def GoBack(self):
         self.close()
-        self.backToOne = ShowImageWindow()    
+        self.backToOne = ChooseCameraWindow()    
 
 
 class getLidar_SearchThread(QThread):
@@ -1035,7 +1063,7 @@ class getLidar_StartSearchWindow(QWidget):
        self.grd.addWidget(info,0,0,1,6)
        self.grd.addWidget(self.val,1,0,1,1)
        self.grd.addWidget(self.pb,1,1,1,5)
-       #self.grd.setAlignment(Qt.AlignCenter)
+       self.grd.setAlignment(Qt.AlignCenter)
        rightGroupBox.setLayout(self.grd)
        ##############################
        
@@ -1046,7 +1074,7 @@ class getLidar_StartSearchWindow(QWidget):
        fullLayout.addWidget(rightGroupBox)
        self.setLayout(fullLayout)
 
-       self.setGeometry(400,100,300,300)
+       self.setGeometry(400,100,300,200)
        self.setWindowTitle('SurfR-CaT')
        self.show()
        ############################
@@ -1081,9 +1109,9 @@ class getLidar_StartSearchWindow(QWidget):
          contBut.clicked.connect(self.GoToChooseLidarSet)
          backBut.clicked.connect(self.GoBack)
          
-         self.grd.addWidget(doneInfo,4,0,1,6)
-         self.grd.addWidget(contBut,5,4,1,2)
-         self.grd.addWidget(backBut,5,0,1,2)
+         self.grd.addWidget(doneInfo,4,0,3,6)
+         self.grd.addWidget(contBut,7,4,1,2)
+         self.grd.addWidget(backBut,7,0,1,2)
          
      def GoToChooseLidarSet(self):
          '''
@@ -1104,7 +1132,7 @@ class getLidar_StartSearchWindow(QWidget):
          Go back to camera choice window on Back click.
          '''
          self.close()
-         self.backToOne = ChooseCameraWindow()    
+         self.backToOne = getImagery_ChooseCameraWindow()    
 
 #=============================================================================#
 #=============================================================================#
@@ -1201,7 +1229,7 @@ class getImagery_ChooseNewDate(QWidget):
            
        # Instantiate worker threads #
        self.worker = DownloadVidThread(yr,mo,day)
-       self.worker2 = CheckPTZThread()
+       self.worker2 = CheckPTZThread(2)
        ##############################
        
        lab1 = QLabel('Downloading Video...')
@@ -1339,9 +1367,9 @@ class OtherCameraLocationInputWindow(QWidget):
            pickle.dump(pthToImagery,f)       
 
 
-class ChooseViewWindow(QWidget):
+class ChooseViewWindow2(QWidget):
     '''
-    Window allowing the user to choose which view they want to calibrate from a PTZ camera.
+    Window allowing the user to choose which view they want to calibrate from a PTZ camera, 2nd and last try.
     '''
    
     def __init__(self):
@@ -1354,6 +1382,30 @@ class ChooseViewWindow(QWidget):
         self.initUI()
         
     def initUI(self):
+        
+       # Left menu box setup #
+       bf = QFont()
+       bf.setBold(True)
+       leftBar1 = QLabel('• Welcome!')
+       leftBar2 = QLabel('• Get imagery')
+       leftBar2.setFont(bf)
+       leftBar3 = QLabel('• Get lidar data')
+       leftBar4 = QLabel('• Pick GCPs')
+       leftBar5 = QLabel('• Calibrate')
+       
+       leftGroupBox = QGroupBox('Contents:')
+       vBox = QVBoxLayout()
+       vBox.addWidget(leftBar1)
+       vBox.addWidget(leftBar2)
+       vBox.addWidget(leftBar3)
+       vBox.addWidget(leftBar4)
+       vBox.addWidget(leftBar5)
+       vBox.addStretch(1)
+       leftGroupBox.setLayout(vBox)
+       ########################    
+
+       # Right contents box setup #
+       self.rightGroupBox = QGroupBox()
        
        f1 = open(wd+'viewDF.pkl','rb')
        f2 = open(wd+'vidFile.pkl','rb')
@@ -1393,10 +1445,17 @@ class ChooseViewWindow(QWidget):
            cb.addItem('View'+str(i+1))
 
        self.grd.addWidget(cb,3,0,1,numViews)
+       orLab1 = QLabel('Or')
+       orLab2 = QLabel('Or')
        badBut = QPushButton('Views are not correct')
        badBut2 = QPushButton('Need new images')
-       self.grd.addWidget(badBut,4,0,1,numViews)
-       self.grd.addWidget(badBut2,5,0,1,numViews)
+       self.grd.addWidget(orLab1,4,0,1,numViews)
+       self.grd.addWidget(badBut,5,0,1,numViews)
+       self.grd.addWidget(orLab2,6,0,1,numViews)
+       self.grd.addWidget(badBut2,7,0,1,numViews)
+       
+       self.rightGroupBox.setLayout(self.grd)
+       ###################################
        
        # Connect widgets with signals #
        cb.activated.connect(self.viewSelected)
@@ -1405,12 +1464,19 @@ class ChooseViewWindow(QWidget):
        ################################
 
        # Full widget layout setup #
-       self.setLayout(self.grd)
+       fullLayout = QHBoxLayout()
+       fullLayout.addWidget(leftGroupBox)
+       fullLayout.addWidget(self.rightGroupBox)
+       self.setLayout(fullLayout)
 
        self.setGeometry(400,100,1000,500)
        self.setWindowTitle('SurfR-CaT')
        self.show()
        ############################
+       
+       # Instantiate worker threads #
+       self.worker = CheckPTZThread(1)
+       ##############################
        
     def viewSelected(self,item):
        '''
@@ -1420,13 +1486,167 @@ class ChooseViewWindow(QWidget):
        im = self.frameDF['Image'][viewSel]
        cv2.imwrite('frameUse.png', im)
        
-#           self.close()
-#           self.lidar = getLidar_StartSearchWindow()
-#           self.getLidar_StartSearchWindow.show()
+       self.close()
+       self.lidar = getLidar_StartSearchWindow()
+       self.getLidar_StartSearchWindow.show()
        
     def tryAgain(self):
-       pass
+       self.msg = QMessageBox(self)
+       self.msg.setText('Sorry, the automated view-tracking algorithm is not working for this camera. You will have to manually seperate the different views and feed to view that you want to use to the tool.')
+       self.msg.setStandardButtons(self.msg.Close)
+       self.msg.show()
+
+        
+    def chooseNewDate(self):
+       '''
+       Pops up window for user to input date for imagery download
+       '''
+       self.close()
+       self.newDate = getImagery_ChooseNewDate()
+       self.newDate.show()
+
+
+
+
+
+class ChooseViewWindow(QWidget):
+    '''
+    Window allowing the user to choose which view they want to calibrate from a PTZ camera.
+    '''
    
+    def __init__(self):
+        super().__init__()    
+        
+        if not QApplication.instance():
+            app = QApplication(sys.argv)
+        else:
+            app = QApplication.instance()             
+        self.initUI()
+        
+    def initUI(self):
+       
+       # Left menu box setup #
+       bf = QFont()
+       bf.setBold(True)
+       leftBar1 = QLabel('• Welcome!')
+       leftBar2 = QLabel('• Get imagery')
+       leftBar2.setFont(bf)
+       leftBar3 = QLabel('• Get lidar data')
+       leftBar4 = QLabel('• Pick GCPs')
+       leftBar5 = QLabel('• Calibrate')
+       
+       leftGroupBox = QGroupBox('Contents:')
+       vBox = QVBoxLayout()
+       vBox.addWidget(leftBar1)
+       vBox.addWidget(leftBar2)
+       vBox.addWidget(leftBar3)
+       vBox.addWidget(leftBar4)
+       vBox.addWidget(leftBar5)
+       vBox.addStretch(1)
+       leftGroupBox.setLayout(vBox)
+       ########################    
+        
+       # Right contents box setup #
+       self.rightGroupBox = QGroupBox()
+       f1 = open(wd+'viewDF.pkl','rb')
+       f2 = open(wd+'vidFile.pkl','rb')
+       self.viewDF = pickle.load(f1)
+       vidFile = pickle.load(f2)
+       vidPth = wd+vidFile
+       
+       self.frameDF = RECALL.getImagery_SeperateViewsAndGetFrames(vidPth,self.viewDF)
+       numViews = len(self.frameDF)
+       
+       # Set up the text label #
+       txt = QLabel('Automatically detected unique camera views are shown below. Choose the view which you would like to calibrate. If the detected view(s) are not correct, press the Not Correct button. If the image(s) are not clear enough to allow for feature extraction, press the Need New Images button.')
+       txt.setWordWrap(True)
+       txt2 = QLabel('Select view to calibrate:')
+       cb = QComboBox()
+       cb.addItem('--')
+       
+       self.grd = QGridLayout()
+       self.grd.addWidget(txt,0,0,1,numViews)
+       self.grd.addWidget(txt2,2,0,1,numViews)
+       
+       # Display image from each view #
+       for i in range(0,numViews):
+           im = self.frameDF['Image'][i]
+           cv2.imwrite('frame.png', im)
+           
+           plt.ioff()
+           self.figure = plt.figure()
+           self.ax = self.figure.add_subplot(111)
+           self.canvas = FigureCanvas(self.figure)
+        
+           img = mpimg.imread(wd+'frame.png')
+           imgplot = plt.imshow(img)
+           self.canvas.draw()
+          
+           self.grd.addWidget(self.canvas,1,i,1,numViews-(numViews-i)+1)
+           cb.addItem('View'+str(i+1))
+
+       self.grd.addWidget(cb,3,0,1,numViews)
+       orLab1 = QLabel('Or')
+       orLab2 = QLabel('Or')
+       badBut = QPushButton('Views are not correct')
+       badBut2 = QPushButton('Need new images')
+       self.grd.addWidget(orLab1,4,0,1,numViews)
+       self.grd.addWidget(badBut,5,0,1,numViews)
+       self.grd.addWidget(orLab2,6,0,1,numViews)
+       self.grd.addWidget(badBut2,7,0,1,numViews)
+       
+       self.rightGroupBox.setLayout(self.grd)
+       ########################################
+       
+       # Connect widgets with signals #
+       cb.activated.connect(self.viewSelected)
+       badBut.clicked.connect(self.tryAgain)
+       badBut2.clicked.connect(self.chooseNewDate)
+       ################################
+
+       # Full widget layout setup #
+       fullLayout = QHBoxLayout()
+       fullLayout.addWidget(leftGroupBox)
+       fullLayout.addWidget(self.rightGroupBox)
+       self.setLayout(fullLayout)
+
+       self.setGeometry(400,100,1000,500)
+       self.setWindowTitle('SurfR-CaT')
+       self.show()
+       ############################
+       
+       # Instantiate worker threads #
+       self.worker = CheckPTZThread(1)
+       ##############################
+       
+    def viewSelected(self,item):
+       '''
+       Takes user to the lidar acquisition module on Yes click
+       '''
+       viewSel = item-1
+       im = self.frameDF['Image'][viewSel]
+       cv2.imwrite('frameUse.png', im)
+       
+       self.close()
+       self.lidar = getLidar_StartSearchWindow()
+       self.getLidar_StartSearchWindow.show()
+       
+    def tryAgain(self):
+       self.msg = QMessageBox(self)
+       self.msg.setText('Re-checking different camera views (dialog will close when done)...')
+#       self.msg.setStandardButtons(QMessageBox.No)
+       self.msg.show()
+       self.worker.start()
+       self.worker.finishSignal.connect(self.on_closeSignal)
+
+    def on_closeSignal(self):
+       
+       self.msg.close()
+       
+       self.close()
+       self.cv22 = ChooseViewWindow2()
+       self.cv22.show()        
+        
     def chooseNewDate(self):
        '''
        Pops up window for user to input date for imagery download
@@ -1483,8 +1703,9 @@ class CheckPTZThread(QThread):
     '''
     finishSignal = pyqtSignal('PyQt_PyObject')
 
-    def __init__(self):
+    def __init__(self,numIters):
         super().__init__()
+        self.numIters = numIters
         
     def run(self):
         
@@ -1495,7 +1716,7 @@ class CheckPTZThread(QThread):
        
        # Check if PTZ #       
        fullVidPth = wd + vidFile           
-       viewDF,frameVec = RECALL.getImagery_CheckPTZ(fullVidPth)
+       viewDF,frameVec = RECALL.getImagery_CheckPTZ(fullVidPth,self.numIters)
        
        with open(wd+'viewDF.pkl','wb') as f:
            pickle.dump(viewDF,f)
@@ -1586,7 +1807,7 @@ class WebCATLocationWindow(QWidget):
         
        # Instantiate worker threads #
        self.worker = DownloadVidThread(None,None,None)
-       self.worker2 = CheckPTZThread()
+       self.worker2 = CheckPTZThread(2)
        ##############################
 
     def getSelected(self,item):
